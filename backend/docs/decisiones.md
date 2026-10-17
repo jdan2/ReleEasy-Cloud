@@ -97,3 +97,62 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
   - una franja amarilla avisa de que el modo demo está activo;
   - el detalle de la aplicación muestra un botón "Simular merge", en lugar de depender de GitHub.
 - **Uso:** está activado mientras se revisa el front. Para usar la API real hay que poner `"mockApi": false` en `config.json`, sin recompilar. En los despliegues reales debe estar siempre en `false`.
+
+---
+
+# Cambio de alcance (2026-10-17): vista de cliente, cuenta AWS propia y plantillas configurables
+
+## D-18 · El cliente usa su propia cuenta de AWS (sustituye a AWS Organizations)
+
+- **Contexto:** el enunciado original creaba una cuenta miembro por cliente con `organizations:CreateAccount`. Tiene inconvenientes:
+  - la cuota de cuentas por organización es baja por defecto y ampliarla requiere una revisión manual de AWS;
+  - cerrar una cuenta tarda 90 días y hay límites de cierre;
+  - la factura de todos los clientes llega a la plataforma, que tendría que refacturarla.
+- **Decisión:** cada cliente conecta **su propia cuenta de AWS**:
+  1. el portal le da un **External ID** único y un enlace *Quick-create* de CloudFormation;
+  2. el stack crea en la cuenta del cliente el rol `ReleEasyDeployRole`, que confía en la cuenta de la plataforma y exige ese External ID;
+  3. el cliente pega el ARN del rol y la plataforma lo verifica con `sts:AssumeRole`.
+- **Por qué no claves de acceso:** las *access keys* son credenciales de larga duración. El rol con External ID es el patrón estándar (Datadog, Spacelift…): la plataforma solo obtiene credenciales temporales y el cliente revoca el acceso borrando el stack. El External ID evita el problema del *confused deputy* (que alguien haga que la plataforma actúe sobre una cuenta ajena).
+- **Consecuencias:**
+  - desaparecen `CreateAccount`, el polling de la creación de cuentas y el estado `CREATING`; el cliente tiene un estado de conexión `NOT_CONNECTED` o `CONNECTED`;
+  - el pipeline asume `ReleEasyDeployRole` (con External ID) en lugar de `OrganizationAccountAccessRole`;
+  - AWS factura directamente al cliente, y la plataforma cobra su propia cuota (D-20);
+  - **el backend y el Terraform de la fase 2 deben adaptarse** (pendiente; ver CLAUDE.md).
+
+## D-19 · Base de datos fuera del alcance por ahora
+
+- **Decisión:** las plantillas con Spring Boot todavía no gestionan base de datos.
+- **Para más adelante:** se añadiría como una opción "con base de datos" de esas plantillas, no como una plantilla aparte. Puede ser RDS PostgreSQL creado por la plataforma o la BD externa del cliente, y en ambos casos la conexión se guarda en Secrets Manager y se inyecta en el contenedor. Las semillas no necesitan coordinación: el repo del cliente incluye migraciones con Flyway o Liquibase, que Spring Boot ejecuta al arrancar.
+
+## D-20 · Estimación de costes y cuota de la plataforma
+
+- **Decisión:**
+  - cada plantilla declara qué servicios de AWS crea y cada opción, qué servicios añade;
+  - con el **uso estimado** que indica el cliente (visitas, peso de página, peticiones a la API, tamaño de respuesta, mensajes SQS), `core/pricing/cost-estimator.ts` calcula el coste mensual por servicio;
+  - el formulario lo recalcula en vivo.
+- **Precios:** son precios de referencia bajo demanda de eu-west-1, centralizados en `core/pricing/aws-prices.ts` con su fecha de revisión. Son **aproximados**: no incluyen capa gratuita, impuestos ni descuentos, y se indica al cliente que es una estimación.
+- **Precio total:** se muestra separado en "Infraestructura AWS" (lo factura AWS a la cuenta del cliente) y "Cuota ReleEasy" (simulada: 9 USD por app y mes).
+- **Supuestos visibles:** unas 10 peticiones por visita, backend 24/7 con el mínimo de contenedores, 1 NAT Gateway, ~1 KB de logs por petición y muestreo de X-Ray del 5 %. Si hay autoescalado, se muestra también el coste máximo.
+
+## D-21 · Roles, registro de clientes y contrato de la API definido por el portal
+
+- **Decisión:**
+  - Hay dos roles, `ADMIN` y `CLIENT`, con un único login que lleva a cada uno a su vista (`/admin` o `/portal`).
+  - El cliente **se registra solo** (empresa, email y contraseña) y queda sin conexiones.
+  - La sesión usa un token *Bearer* opaco, que será un JWT en el backend.
+  - El administrador ve a todos los clientes, sus conexiones y sus apps, en solo lectura.
+  - **Solo el cliente crea aplicaciones.**
+- **Contrato:** las rutas (`/api/auth/*`, `/api/me/*`, `/api/templates`, `/api/tenants/*`, `/api/apps/*`) y los tipos están en `frontend/src/app/core/api/`. De momento solo los implementa el modo demo; el backend se adaptará después.
+
+## D-22 · Plantillas configurables
+
+- **Decisión:** hay tres plantillas, Angular (S3 + CloudFront), Spring Boot (ECS Fargate) y Angular + Spring Boot, definidas de forma declarativa en `core/templates/template-catalog.ts`. Cada una incluye grupos de opciones (interruptores, selectores, números, textos y variables de entorno), campos que dependen de otros (`visibleWhen`), validaciones, campos de uso y perfiles de uso (Bajo, Medio, Alto).
+- **Opciones del front:** alarmas 4xx/5xx, CloudWatch RUM, AWS WAF y dominio propio (Route 53 + ACM).
+- **Opciones del back:**
+  - entrada por ALB o por API Gateway HTTP API (con límite de peticiones; usa VPC Link y Cloud Map y evita el ALB);
+  - tamaño y número de contenedores con autoescalado;
+  - retención de logs, alarmas, Container Insights y X-Ray;
+  - cola SQS con DLQ;
+  - variables de entorno.
+- **Fase 4:** cada opción se traducirá en una variable de Terraform del módulo de la plantilla (por ejemplo `enable_sqs`).
+- **Primer despliegue:** al crear la app se despliega el último commit de la rama (en el modo demo, a los pocos segundos); después, cada merge.

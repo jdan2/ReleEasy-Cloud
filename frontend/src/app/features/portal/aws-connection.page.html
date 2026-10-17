@@ -1,0 +1,99 @@
+<div class="flex max-w-3xl flex-col gap-6">
+  <a routerLink="/portal" class="link text-sm">← Inicio</a>
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Conecta tu cuenta de AWS</h1>
+    <p class="mt-1 text-sm text-slate-500">
+      Tus aplicaciones se despliegan en <strong>tu</strong> cuenta y AWS te factura directamente. ReleEasy no guarda
+      claves de acceso: asume un rol que tú creas y puedes revocar cuando quieras.
+    </p>
+  </div>
+
+  @if (error(); as message) {
+    <p class="alert-error" role="alert">{{ message }}</p>
+  }
+
+  @if (tenant(); as t) {
+    @if (t.aws.status === 'CONNECTED') {
+      <section class="card">
+        <div class="flex items-center justify-between gap-4">
+          <h2 class="card-title">Cuenta conectada</h2>
+          <app-status-badge [status]="t.aws.status" />
+        </div>
+        <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt class="text-slate-500">Cuenta AWS</dt>
+            <dd class="mt-1 font-mono">{{ t.aws.accountId }}</dd>
+          </div>
+          <div>
+            <dt class="text-slate-500">Conectada el</dt>
+            <dd class="mt-1">{{ t.aws.connectedAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+          </div>
+          <div class="sm:col-span-2">
+            <dt class="text-slate-500">Rol de despliegue</dt>
+            <dd class="mt-1 font-mono text-xs break-all">{{ t.aws.roleArn }}</dd>
+          </div>
+        </dl>
+        <div class="mt-6 flex gap-3">
+          <a routerLink="/portal/templates" class="btn-primary">Crear una aplicación</a>
+          <button type="button" class="btn-secondary" [disabled]="saving()" (click)="disconnect()">Desconectar</button>
+        </div>
+      </section>
+    } @else {
+      <ol class="flex flex-col gap-4">
+        <li class="card">
+          <h2 class="card-title">1. Crea el rol en tu cuenta</h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Inicia sesión en la consola de AWS con un usuario administrador y abre este enlace. Se abrirá un stack de
+            CloudFormation con los datos ya rellenos; solo tienes que marcar la casilla de IAM y pulsar
+            <em>Crear stack</em>.
+          </p>
+          <a class="btn-primary mt-4" [href]="quickCreateUrl()" target="_blank" rel="noopener">Abrir en la consola de AWS ↗</a>
+          <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt class="text-slate-500">Cuenta de ReleEasy</dt>
+              <dd class="mt-1 font-mono">{{ t.aws.platformAccountId }}</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Tu External ID</dt>
+              <dd class="mt-1 flex items-center gap-2">
+                <code class="font-mono text-xs break-all">{{ t.aws.externalId }}</code>
+                <button type="button" class="link text-xs" (click)="copy(t.aws.externalId)">Copiar</button>
+              </dd>
+            </div>
+          </dl>
+          <details class="mt-4 text-sm">
+            <summary class="cursor-pointer text-slate-600">¿Qué crea exactamente este stack?</summary>
+            <pre class="mt-2 overflow-x-auto rounded-md bg-slate-900 p-4 text-xs text-slate-100">{{ cloudFormationPreview() }}</pre>
+          </details>
+        </li>
+
+        <li class="card">
+          <h2 class="card-title">2. Pega el ARN del rol</h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Cuando el stack termine, copia el valor <code class="font-mono">RoleArn</code> de la pestaña
+            <em>Salidas</em>. Comprobaremos que podemos asumir el rol.
+          </p>
+          <form class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start" [formGroup]="form" (ngSubmit)="connect()">
+            <div class="flex-1">
+              <label class="sr-only" for="role-arn">ARN del rol</label>
+              <input
+                id="role-arn"
+                class="form-input mt-0 font-mono"
+                formControlName="roleArn"
+                [placeholder]="'arn:aws:iam::123456789012:role/' + roleName"
+              />
+              @if (form.controls.roleArn.invalid && form.controls.roleArn.touched) {
+                <p class="form-error">Formato: arn:aws:iam::&lt;12 dígitos&gt;:role/&lt;nombre&gt;</p>
+              }
+            </div>
+            <button type="submit" class="btn-primary" [disabled]="saving()">
+              {{ saving() ? 'Verificando…' : 'Verificar conexión' }}
+            </button>
+          </form>
+        </li>
+      </ol>
+    }
+  } @else if (!error()) {
+    <p class="text-sm text-slate-500">Cargando…</p>
+  }
+</div>

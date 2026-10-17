@@ -1,74 +1,61 @@
-import { HttpClient } from '@angular/common/http';
-import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, catchError, map, tap, throwError } from 'rxjs';
-import { APP_CONFIG } from '../config/app-config';
+import { Injectable, computed, signal } from '@angular/core';
+import { Role, Session, User } from '../api/models';
 
-const STORAGE_KEY = 'releasy.auth';
+const STORAGE_KEY = 'releasy.session';
 
 /**
- * Sesión del administrador (MVP: HTTP Basic).
+ * Sesión del usuario (administrador o cliente).
  *
- * Las credenciales se guardan codificadas en `sessionStorage`: duran lo que la pestaña y no se
- * comparten con otras. Es suficiente para el MVP; la autenticación real (p. ej. Cognito) queda
- * fuera de alcance.
+ * Guarda el token y los datos del usuario en `sessionStorage`: duran lo que la pestaña. Las
+ * peticiones de login y registro las hacen las pantallas con `ReleasyApi` y luego llaman a
+ * {@link start}.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly http = inject(HttpClient);
-  private readonly apiUrl = inject(APP_CONFIG).apiUrl;
-  private readonly token = signal<string | null>(readStoredToken());
+  private readonly session = signal<Session | null>(readStoredSession());
 
-  readonly isAuthenticated = computed(() => this.token() !== null);
+  readonly user = computed<User | null>(() => this.session()?.user ?? null);
+  readonly isAuthenticated = computed(() => this.session() !== null);
+  readonly role = computed<Role | null>(() => this.user()?.role ?? null);
 
   /** Valor de la cabecera `Authorization`, o `null` si no hay sesión. */
   authorizationHeader(): string | null {
-    const token = this.token();
-    return token ? `Basic ${token}` : null;
+    const token = this.session()?.token;
+    return token ? `Bearer ${token}` : null;
   }
 
-  /**
-   * Comprueba las credenciales con una petición real a la API y, si son válidas, abre la sesión.
-   * Emite `false` si la API responde 401.
-   */
-  login(username: string, password: string): Observable<boolean> {
-    const candidate = encodeBasic(username, password);
-    return this.http
-      .get<unknown>(`${this.apiUrl}/api/tenants`, { headers: { Authorization: `Basic ${candidate}` } })
-      .pipe(
-        map(() => true),
-        tap(() => this.store(candidate)),
-        catchError((error: { status?: number }) => (error.status === 401 ? [false] : throwError(() => error))),
-      );
+  /** Ruta de inicio según el rol. */
+  homeUrl(): string {
+    return this.role() === 'ADMIN' ? '/admin' : '/portal';
+  }
+
+  start(session: Session): void {
+    this.store(session);
   }
 
   logout(): void {
     this.store(null);
   }
 
-  private store(token: string | null): void {
-    this.token.set(token);
+  private store(session: Session | null): void {
+    this.session.set(session);
     try {
-      if (token) {
-        sessionStorage.setItem(STORAGE_KEY, token);
+      if (session) {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
       } else {
         sessionStorage.removeItem(STORAGE_KEY);
       }
     } catch {
-      // sessionStorage no disponible (modo privado estricto): la sesión vive solo en memoria.
+      // sessionStorage no disponible: la sesión vive solo en memoria.
     }
   }
 }
 
-function readStoredToken(): string | null {
+function readStoredSession(): Session | null {
   try {
-    return sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Session) : null;
   } catch {
     return null;
   }
-}
-
-/** Codifica `usuario:contraseña` en Base64, admitiendo caracteres no ASCII (UTF-8). */
-export function encodeBasic(username: string, password: string): string {
-  const bytes = new TextEncoder().encode(`${username}:${password}`);
-  return btoa(String.fromCharCode(...bytes));
 }

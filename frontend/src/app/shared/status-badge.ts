@@ -1,11 +1,11 @@
 import { Component, computed, input } from '@angular/core';
-import { ReleaseStatus, TenantStatus } from '../core/api/models';
+import { ConnectionStatus, ReleaseStatus } from '../core/api/models';
 
-type Status = TenantStatus | ReleaseStatus;
+type Status = ConnectionStatus | ReleaseStatus;
 
 const STYLES: Record<Status, { classes: string; label: string; spinning: boolean }> = {
-  CREATING: { classes: 'bg-amber-50 text-amber-800 ring-amber-600/20', label: 'Creando cuenta', spinning: true },
-  ACTIVE: { classes: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', label: 'Cuenta activa', spinning: false },
+  NOT_CONNECTED: { classes: 'bg-slate-100 text-slate-600 ring-slate-500/20', label: 'Sin conectar', spinning: false },
+  CONNECTED: { classes: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', label: 'Conectada', spinning: false },
   PENDING: { classes: 'bg-slate-100 text-slate-700 ring-slate-500/20', label: 'En cola', spinning: true },
   RUNNING: { classes: 'bg-sky-50 text-sky-700 ring-sky-600/20', label: 'Desplegando', spinning: true },
   SUCCEEDED: { classes: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', label: 'Desplegado', spinning: false },
@@ -13,8 +13,8 @@ const STYLES: Record<Status, { classes: string; label: string; spinning: boolean
 };
 
 /**
- * Etiqueta de estado (de cuenta AWS o de release). Muestra el código técnico (`RUNNING`...) con
- * su descripción en español como texto de ayuda.
+ * Etiqueta de estado (de una conexión o de un release). Muestra el código técnico con su
+ * descripción en español como texto de ayuda.
  */
 @Component({
   selector: 'app-status-badge',

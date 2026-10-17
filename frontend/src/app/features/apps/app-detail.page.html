@@ -1,6 +1,6 @@
-<div class="flex flex-col gap-8">
+<div class="flex flex-col gap-6">
   @if (app(); as a) {
-    <a [routerLink]="['/tenants', a.tenantId]" class="link text-sm">← Volver al cliente</a>
+    <a [routerLink]="backLink(a)" class="link text-sm">← {{ isAdmin ? 'Volver al cliente' : 'Mis aplicaciones' }}</a>
   }
 
   @if (loadError(); as message) {
@@ -8,32 +8,52 @@
   }
 
   @if (app(); as a) {
-    <section class="card">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-semibold tracking-tight">{{ a.name }}</h1>
-          <p class="mt-1 font-mono text-sm text-slate-500">
-            <a class="hover:underline" [href]="'https://github.com/' + a.repository" target="_blank" rel="noopener">{{
-              a.repository
-            }}</a>
-            · rama {{ a.branch }}
-          </p>
+    <div class="grid gap-6 lg:grid-cols-[1fr_22rem] lg:items-start">
+      <section class="card">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight">{{ a.name }}</h1>
+            <p class="mt-1 font-mono text-sm text-slate-500">
+              <a class="hover:underline" [href]="'https://github.com/' + a.repository" target="_blank" rel="noopener">{{
+                a.repository
+              }}</a>
+              · rama {{ a.branch }}
+            </p>
+          </div>
+          <span class="rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">{{ template()?.name }}</span>
         </div>
-        <span class="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600">{{ a.plan }}</span>
-      </div>
 
-      <div class="mt-6">
-        <p class="text-sm text-slate-500">URL pública</p>
-        @if (provisionalUrl()) {
-          <p class="mt-1 font-mono text-sm break-all text-slate-700">{{ a.url }}</p>
-          <p class="form-hint">Provisional: la URL definitiva se asigna con el primer despliegue correcto.</p>
-        } @else {
-          <a class="link mt-1 inline-block font-mono text-sm break-all" [href]="a.url" target="_blank" rel="noopener">{{
-            a.url
-          }}</a>
+        <div class="mt-6">
+          <p class="text-sm text-slate-500">URL pública</p>
+          @if (provisionalUrl()) {
+            <p class="mt-1 font-mono text-sm break-all text-slate-700">{{ a.url }}</p>
+            <p class="form-hint">Provisional: la URL definitiva se asigna con el primer despliegue correcto.</p>
+          } @else {
+            <a class="link mt-1 inline-block font-mono text-sm break-all" [href]="a.url" target="_blank" rel="noopener">{{
+              a.url
+            }}</a>
+          }
+        </div>
+
+        @if (components().length > 0) {
+          <div class="mt-6">
+            <p class="text-sm text-slate-500">Componentes y configuración</p>
+            <ul class="mt-2 flex flex-wrap gap-1.5">
+              @for (c of components(); track c) {
+                <li class="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{{ c }}</li>
+              }
+            </ul>
+          </div>
         }
-      </div>
-    </section>
+      </section>
+
+      @if (estimate(); as e) {
+        <aside class="card" aria-labelledby="cost-title">
+          <h2 id="cost-title" class="card-title">Coste mensual estimado</h2>
+          <div class="mt-4"><app-cost-breakdown [estimate]="e" /></div>
+        </aside>
+      }
+    </div>
 
     <section class="card overflow-hidden p-0" aria-labelledby="releases-title">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
@@ -65,7 +85,7 @@
       @if (releases().length === 0) {
         <p class="p-6 text-sm text-slate-500">
           Aún no hay releases. Haz merge de un PR a <code class="font-mono">{{ a.branch }}</code> en
-          <code class="font-mono">{{ a.repository }}</code> para lanzar el primer despliegue.
+          <code class="font-mono">{{ a.repository }}</code> para lanzar un despliegue.
         </p>
       } @else {
         <div class="overflow-x-auto">
@@ -83,9 +103,14 @@
                 <tr>
                   <td><app-status-badge [status]="release.status" /></td>
                   <td class="max-w-md">
-                    <a class="link font-mono text-xs" [href]="commitUrl(release)" target="_blank" rel="noopener" [title]="release.commitSha">{{
-                      release.commitSha.slice(0, 7)
-                    }}</a>
+                    <a
+                      class="link font-mono text-xs"
+                      [href]="commitUrl(release)"
+                      target="_blank"
+                      rel="noopener"
+                      [title]="release.commitSha"
+                      >{{ release.commitSha.slice(0, 7) }}</a
+                    >
                     @if (release.commitMessage) {
                       <span class="ml-2 text-slate-600">{{ release.commitMessage }}</span>
                     }
@@ -93,8 +118,8 @@
                       <p class="mt-1 text-xs text-rose-600">{{ release.errorMessage }}</p>
                     }
                   </td>
-                  <td class="whitespace-nowrap text-xs text-slate-500">{{ release.createdAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
-                  <td class="whitespace-nowrap text-xs text-slate-500">{{ release.updatedAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                  <td class="text-xs whitespace-nowrap text-slate-500">{{ release.createdAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                  <td class="text-xs whitespace-nowrap text-slate-500">{{ release.updatedAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
                 </tr>
               }
             </tbody>

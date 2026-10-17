@@ -147,3 +147,4 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
 2026-10-17 | Instalados Docker Desktop 4.95.0 y GitHub CLI (por el usuario).
 2026-10-17 | Fase 3: portal con Tailwind CSS 4.3.3 (+ @tailwindcss/postcss, postcss). Retirados @angular/material y @angular/cdk.
 2026-10-17 | Modo demo del portal (mockApi en config.json). Sin dependencias nuevas.
+2026-10-17 | Cambio de alcance (D-18..D-22): vista de cliente, cuenta AWS propia, GitHub App, plantillas configurables y estimador de costes. Sin dependencias nuevas (todo con Angular + Tailwind).

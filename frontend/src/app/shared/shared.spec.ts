@@ -1,13 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { aRelease, aTenant } from '../../testing/test-data';
+import { aRelease } from '../../testing/test-data';
 import { describeHttpError } from './http-error';
 import { Poller } from './poller';
 import {
   ACTIVE_POLL_MS,
   IDLE_POLL_MS,
-  hasAccountInCreation,
   hasReleaseInProgress,
   releasePollInterval,
 } from './polling-policy';
@@ -25,11 +24,6 @@ describe('Política de polling', () => {
     expect(releasePollInterval([aRelease('RUNNING')])).toBe(ACTIVE_POLL_MS);
     expect(releasePollInterval([aRelease('SUCCEEDED')])).toBe(IDLE_POLL_MS);
     expect(ACTIVE_POLL_MS).toBeLessThan(IDLE_POLL_MS);
-  });
-
-  it('detecta cuentas AWS en creación', () => {
-    expect(hasAccountInCreation([aTenant({ status: 'CREATING' })])).toBe(true);
-    expect(hasAccountInCreation([aTenant({ status: 'ACTIVE' }), aTenant({ status: 'FAILED' })])).toBe(false);
   });
 });
 

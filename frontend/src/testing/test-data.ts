@@ -1,21 +1,13 @@
-import { App, Release, ReleaseStatus, Tenant } from '../app/core/api/models';
+import { App, Release, ReleaseStatus, Session } from '../app/core/api/models';
 import { AppConfig } from '../app/core/config/app-config';
 
 /** Datos de prueba compartidos por los specs. */
 export const TEST_CONFIG: AppConfig = { apiUrl: 'http://api.test', mockApi: false };
 
-export function aTenant(overrides: Partial<Tenant> = {}): Tenant {
+export function aSession(role: 'ADMIN' | 'CLIENT' = 'CLIENT'): Session {
   return {
-    id: 't-1',
-    name: 'Acme',
-    email: 'it@acme.es',
-    status: 'ACTIVE',
-    accountId: '123456789012',
-    roleArn: 'arn:aws:iam::123456789012:role/OrganizationAccountAccessRole',
-    failureReason: null,
-    createdAt: '2026-10-17T10:00:00Z',
-    updatedAt: '2026-10-17T10:00:00Z',
-    ...overrides,
+    token: 'token-123',
+    user: { id: 'u-1', email: 'it@acme.es', name: 'Acme', role, tenantId: role === 'CLIENT' ? 't-1' : null },
   };
 }
 
@@ -24,9 +16,11 @@ export function anApp(overrides: Partial<App> = {}): App {
     id: 'a-1',
     tenantId: 't-1',
     name: 'tienda',
+    templateId: 'angular-static',
     repository: 'acme/tienda',
     branch: 'master',
-    plan: 'BASIC',
+    options: { front_alarms: false, front_rum: false, waf: false, custom_domain: false, domain_name: '', notification_email: '' },
+    usage: { pageViewsPerMonth: 10_000, pageWeightMb: 1 },
     url: 'https://tienda-acme.apps.releasy.local',
     createdAt: '2026-10-17T10:00:00Z',
     updatedAt: '2026-10-17T10:00:00Z',

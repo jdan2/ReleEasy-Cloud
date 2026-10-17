@@ -4,22 +4,27 @@ import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { App, Release } from '../../core/api/models';
 import { ReleasyApi } from '../../core/api/releasy-api.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { APP_CONFIG } from '../../core/config/app-config';
 import { MockBackend } from '../../core/mock/mock-backend';
+import { estimateMonthlyCost } from '../../core/pricing/cost-estimator';
+import { describeOptions, findTemplate } from '../../core/templates/template-catalog';
+import { CostBreakdown } from '../../shared/cost-breakdown';
 import { describeHttpError } from '../../shared/http-error';
 import { Poller } from '../../shared/poller';
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, hasReleaseInProgress, releasePollInterval } from '../../shared/polling-policy';
 import { StatusBadge } from '../../shared/status-badge';
 
 /**
- * Detalle de una aplicación: URL pública e historial de releases.
+ * Detalle de una aplicación (para su propietario y para el administrador): URL pública, plantilla y
+ * componentes, coste estimado e historial de releases.
  *
- * Mientras haya un release en curso refresca cada {@link ACTIVE_POLL_MS} ms. En reposo lo hace cada
+ * Mientras haya un release en curso refresca cada {@link ACTIVE_POLL_MS} ms; en reposo, cada
  * {@link IDLE_POLL_MS} ms, para que aparezcan los releases nuevos que dispara un merge.
  */
 @Component({
   selector: 'app-app-detail-page',
-  imports: [RouterLink, DatePipe, StatusBadge],
+  imports: [RouterLink, DatePipe, StatusBadge, CostBreakdown],
   templateUrl: './app-detail.page.html',
 })
 export class AppDetailPage implements OnInit {
@@ -31,10 +36,26 @@ export class AppDetailPage implements OnInit {
   private readonly poller = new Poller(() => this.load(), inject(DestroyRef));
 
   protected readonly mockApi = inject(APP_CONFIG).mockApi;
+  protected readonly isAdmin = inject(AuthService).role() === 'ADMIN';
   protected readonly app = signal<App | null>(null);
   protected readonly releases = signal<Release[]>([]);
   protected readonly loadError = signal<string | null>(null);
   protected readonly lastUpdated = signal<Date | null>(null);
+
+  protected readonly template = computed(() => {
+    const app = this.app();
+    return app ? findTemplate(app.templateId) : undefined;
+  });
+  protected readonly components = computed(() => {
+    const app = this.app();
+    const template = this.template();
+    return app && template ? describeOptions(template, app.options) : [];
+  });
+  protected readonly estimate = computed(() => {
+    const app = this.app();
+    const template = this.template();
+    return app && template ? estimateMonthlyCost(template, app.options, app.usage) : null;
+  });
   protected readonly inProgress = computed(() => hasReleaseInProgress(this.releases()));
   /** La URL es provisional hasta el primer despliegue correcto (decisión D-03). */
   protected readonly provisionalUrl = computed(() => !this.releases().some((r) => r.status === 'SUCCEEDED'));
@@ -42,6 +63,10 @@ export class AppDetailPage implements OnInit {
 
   ngOnInit(): void {
     this.load();
+  }
+
+  protected backLink(app: App): string[] {
+    return this.isAdmin ? ['/admin/tenants', app.tenantId] : ['/portal'];
   }
 
   protected refresh(): void {

@@ -1,0 +1,189 @@
+<div class="flex flex-col gap-6">
+  <a routerLink="/portal/templates" class="link text-sm">← Plantillas</a>
+
+  @if (loadError(); as message) {
+    <p class="alert-error" role="alert">{{ message }}</p>
+  }
+
+  @if (template(); as t) {
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Nueva aplicación · {{ t.name }}</h1>
+      <p class="mt-1 text-sm text-slate-500">{{ t.description }}</p>
+    </div>
+
+    @if (!connected()) {
+      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        Para crear aplicaciones necesitas
+        @if (tenant()?.aws?.status !== 'CONNECTED') {
+          <a routerLink="/portal/aws" class="link">conectar tu cuenta de AWS</a>
+        }
+        @if (tenant()?.aws?.status !== 'CONNECTED' && tenant()?.github?.status !== 'CONNECTED') {
+          y
+        }
+        @if (tenant()?.github?.status !== 'CONNECTED') {
+          <a routerLink="/portal/github" class="link">conectar GitHub</a>
+        }. Mientras tanto puedes configurar la plantilla y ver su coste.
+      </div>
+    }
+
+    <div class="grid gap-6 lg:grid-cols-[1fr_22rem] lg:items-start">
+      <form class="flex flex-col gap-6" (submit)="$event.preventDefault(); submit()">
+        <!-- Datos básicos -->
+        <section class="card">
+          <h2 class="card-title">Datos básicos</h2>
+          <div class="mt-4 grid gap-4 sm:grid-cols-3">
+            <div>
+              <label class="form-label" for="app-name">Nombre</label>
+              <input
+                id="app-name"
+                name="name"
+                class="form-input"
+                placeholder="tienda"
+                [value]="name()"
+                (input)="name.set($any($event.target).value.trim())"
+              />
+              <p class="form-hint">Minúsculas, dígitos y guiones.</p>
+            </div>
+            <div>
+              <label class="form-label" for="app-repo">Repositorio</label>
+              <select
+                id="app-repo"
+                name="repository"
+                class="form-input"
+                [disabled]="repositories().length === 0"
+                (change)="selectRepository($any($event.target).value)"
+              >
+                <option value="" [selected]="repository() === ''">
+                  {{ repositories().length === 0 ? 'Conecta GitHub primero' : 'Elige un repositorio' }}
+                </option>
+                @for (repo of repositories(); track repo.fullName) {
+                  <option [value]="repo.fullName" [selected]="repo.fullName === repository()">{{ repo.fullName }}</option>
+                }
+              </select>
+            </div>
+            <div>
+              <label class="form-label" for="app-branch">Rama</label>
+              <select
+                id="app-branch"
+                name="branch"
+                class="form-input"
+                [disabled]="branches().length === 0"
+                (change)="branch.set($any($event.target).value)"
+              >
+                @for (b of branches(); track b) {
+                  <option [value]="b" [selected]="b === branch()">{{ b }}</option>
+                }
+              </select>
+              <p class="form-hint">Cada merge a esta rama despliega.</p>
+            </div>
+          </div>
+          <details class="mt-4 text-sm">
+            <summary class="cursor-pointer text-slate-600">Qué debe tener el repositorio</summary>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+              @for (rule of t.repoContract; track rule) {
+                <li>{{ rule }}</li>
+              }
+            </ul>
+          </details>
+        </section>
+
+        <!-- Componentes opcionales -->
+        @for (group of t.optionGroups; track group.id) {
+          <section class="card">
+            <h2 class="card-title">{{ group.title }}</h2>
+            <p class="mt-1 text-sm text-slate-500">{{ group.description }}</p>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              @for (field of group.fields; track field.key) {
+                @if (isVisible(field.visibleWhen, options())) {
+                  <div [class]="field.type === 'toggle' || field.type === 'keyvalue' ? 'sm:col-span-2' : ''">
+                    <app-option-field
+                      [field]="field"
+                      [value]="options()[field.key]"
+                      (changed)="setOption(field.key, $event)"
+                    />
+                  </div>
+                }
+              }
+            </div>
+          </section>
+        }
+
+        <!-- Uso estimado -->
+        <section class="card">
+          <h2 class="card-title">Uso estimado</h2>
+          <p class="mt-1 text-sm text-slate-500">Solo sirve para calcular el coste; puedes cambiarlo cuando quieras.</p>
+          <div class="mt-4 flex flex-wrap gap-2" role="group" aria-label="Perfiles de uso">
+            @for (preset of t.usagePresets; track preset.id) {
+              <button
+                type="button"
+                class="rounded-md px-3 py-1.5 text-sm ring-1 ring-inset"
+                [class]="
+                  activePreset() === preset.id
+                    ? 'bg-indigo-600 text-white ring-indigo-600'
+                    : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50'
+                "
+                [title]="preset.description"
+                (click)="applyPreset(preset)"
+              >
+                {{ preset.label }}
+              </button>
+            }
+          </div>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            @for (field of visibleUsageFields(); track field.key) {
+              <div>
+                <label class="form-label" [for]="'usage-' + field.key">{{ field.label }}</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    [id]="'usage-' + field.key"
+                    type="number"
+                    class="form-input"
+                    [min]="field.min"
+                    [step]="field.step ?? 1"
+                    [value]="usage()[field.key]"
+                    (input)="setUsage(field.key, $any($event.target).valueAsNumber)"
+                  />
+                  <span class="mt-1 shrink-0 text-sm text-slate-500">{{ field.unit }}</span>
+                </div>
+                @if (field.help) {
+                  <p class="form-hint">{{ field.help }}</p>
+                }
+              </div>
+            }
+          </div>
+        </section>
+
+        <!-- Botón para pantallas pequeñas (en grandes está en el lateral) -->
+        <button type="submit" class="btn-primary lg:hidden" [disabled]="saving() || !connected()">
+          {{ saving() ? 'Creando…' : 'Crear aplicación' }}
+        </button>
+      </form>
+
+      <!-- Resumen de coste -->
+      <aside class="card lg:sticky lg:top-6" aria-labelledby="cost-title">
+        <h2 id="cost-title" class="card-title">Coste mensual estimado</h2>
+        @if (estimate(); as e) {
+          <div class="mt-4">
+            <app-cost-breakdown [estimate]="e" />
+          </div>
+        }
+        @if (submitted() && errors().length > 0) {
+          <ul class="alert-error mt-4 list-disc space-y-1 pl-8" role="alert">
+            @for (message of errors(); track message) {
+              <li>{{ message }}</li>
+            }
+          </ul>
+        }
+        @if (saveError(); as message) {
+          <p class="alert-error mt-4" role="alert">{{ message }}</p>
+        }
+        <button type="button" class="btn-primary mt-6 hidden w-full lg:flex" [disabled]="saving() || !connected()" (click)="submit()">
+          {{ saving() ? 'Creando…' : 'Crear aplicación' }}
+        </button>
+        <p class="form-hint mt-2 hidden lg:block">Al crearla se despliega el último commit de la rama; después, cada merge.</p>
+      </aside>
+    </div>
+  } @else if (!loadError()) {
+    <p class="text-sm text-slate-500">Cargando plantilla…</p>
+  }
+</div>
