@@ -1,0 +1,14 @@
+releasy:
+  admin:
+    username: admin
+    password: test-password
+  github:
+    webhook-secret: test-webhook-secret
+  aws:
+    mode: mock
+    # La prueba de integración llama al poller directamente; la tarea periódica no interviene.
+    account-creation-poll-interval: 1h
+    mock:
+      account-creation-delay: 0s
+      release-start-delay: 0s
+      release-duration: 0s

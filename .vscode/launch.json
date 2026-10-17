@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Arranca la API en modo mock (sin AWS). Las credenciales se leen de backend/.env (no versionado).
+      "type": "java",
+      "name": "ReleEasy API (mock)",
+      "request": "launch",
+      "mainClass": "com.releasy.ReleasyApplication",
+      "projectName": "releasy-api",
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/backend/.env",
+      "env": {
+        "SPRING_PROFILES_ACTIVE": "mock-fast"
+      }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: releasy-api
+
+server:
+  port: ${PORT:8080}
+
+releasy:
+  admin:
+    username: ${RELEASY_ADMIN_USER:admin}
+    # Obligatoria. Sin valor por defecto: la API no arranca si falta.
+    password: ${RELEASY_ADMIN_PASSWORD:}
+  github:
+    # Obligatorio. Mismo secreto que se configura en el webhook de GitHub.
+    webhook-secret: ${RELEASY_GITHUB_WEBHOOK_SECRET:}
+  apps:
+    base-domain: ${RELEASY_APPS_BASE_DOMAIN:apps.releasy.local}
+  cors:
+    allowed-origins: ${RELEASY_CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  aws:
+    # mock: simula Organizations, Step Functions y CodeBuild, sin coste ni efectos en AWS (por defecto)
+    # real: AWS SDK v2 contra la cuenta de administración
+    mode: ${RELEASY_AWS_MODE:mock}
+    region: ${AWS_REGION:eu-west-1}
+    account-role-name: OrganizationAccountAccessRole
+    account-creation-poll-interval: ${RELEASY_ACCOUNT_POLL_INTERVAL:15s}
+    account-creation-timeout: 30m
+    state-machine-arn: ${RELEASY_STATE_MACHINE_ARN:}
+    dynamodb:
+      tenants-table: ${RELEASY_TABLE_TENANTS:releasy-tenants}
+      apps-table: ${RELEASY_TABLE_APPS:releasy-apps}
+      releases-table: ${RELEASY_TABLE_RELEASES:releasy-releases}
+    mock:
+      account-creation-delay: 10s
+      release-start-delay: 3s
+      release-duration: 20s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mock-fast
+# Perfil opcional para la demo: tiempos de simulación cortos.
+releasy:
+  aws:
+    account-creation-poll-interval: 2s
+    mock:
+      account-creation-delay: 5s
+      release-start-delay: 2s
+      release-duration: 10s
