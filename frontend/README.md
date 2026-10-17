@@ -1,59 +1,43 @@
-# Frontend
+# ReleEasy Cloud · Portal
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.3.
+Portal de administración de la plataforma, hecho con Angular 22 (standalone components, zoneless, TypeScript estricto) y Tailwind CSS 4.
 
-## Development server
-
-To start a local development server, run:
+## Arranque en local
 
 ```bash
-ng serve
+nvm use            # Node 24.22.0 (.nvmrc)
+npm install
+npx ng serve       # http://localhost:4200
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+La API debe estar arrancada (ver `backend/docs`). La URL de la API se lee **en tiempo de ejecución** de [`public/config.json`](public/config.json):
 
-## Code scaffolding
+```json
+{ "apiUrl": "http://localhost:8080" }
+```
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Para otro entorno basta con sustituir `config.json` en el servidor, sin recompilar.
+
+## Pruebas
 
 ```bash
-ng generate component component-name
+npx ng test --watch=false   # Vitest
+npx ng build                # build de producción en dist/frontend/browser
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Estructura
 
-```bash
-ng generate --help
 ```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
+src/app/
+  core/
+    config/     config.json en tiempo de ejecución (APP_CONFIG)
+    api/        modelos y cliente HTTP de la API (ReleasyApi)
+    auth/       sesión HTTP Basic, interceptor y guard
+  shared/       badge de estado, polling, mensajes de error
+  features/
+    login/      acceso del administrador
+    tenants/    lista y alta de clientes; detalle con sus aplicaciones
+    apps/       detalle de aplicación e historial de releases (con polling)
+src/styles.css  Tailwind y clases de componente (.card, .btn-primary, ...)
+src/testing/    datos de prueba compartidos por los specs
 ```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.

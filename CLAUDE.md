@@ -16,11 +16,11 @@ Trabajo Fin de Máster. MVP de una plataforma de autoservicio para que PYMEs des
 |---|---|
 | 1. Estructura y dependencias | ✅ Terminada |
 | 2. Backend | ✅ Terminada: 43 pruebas en verde y flujo completo verificado en modo mock con curl |
-| 3. Frontend (portal) | ⏳ **SIGUIENTE**: solo existe el esqueleto de `ng new` |
-| 4. Terraform y pipelines | ⏳ Sin empezar: `backend/deploy/*` vacías |
-| 5. Documentación | 🟡 Solo existe `backend/docs/decisiones.md` (D-01 a D-13) |
+| 3. Frontend (portal) | ✅ Terminada: Tailwind 4, 4 pantallas, 19 pruebas Vitest en verde, build correcto e integración con la API comprobada (config.json y CORS) |
+| 4. Terraform y pipelines | ⏳ **SIGUIENTE**: `backend/deploy/*` vacías |
+| 5. Documentación | 🟡 Existen `backend/docs/decisiones.md` (D-01 a D-16) y `frontend/README.md` |
 
-**Git:** hay un commit local `666cf7f` en `main`, con remoto `origin` = https://github.com/jdan2/ReleEasy-Cloud. **El push está pendiente:** la cuenta `Marmolito` aún no tiene permiso de escritura (error 403). Cuando lo tenga, ejecutar `git push -u origin main`.
+**Git:** hay commits locales en `main`, con remoto `origin` = https://github.com/jdan2/ReleEasy-Cloud. **El push está pendiente:** la cuenta `Marmolito` aún no tiene permiso de escritura (error 403). Cuando lo tenga, ejecutar `git push -u origin main`.
 
 **Docker Desktop:** instalado, pero el usuario tiene que abrir la app (`open -a Docker`) para que arranque el motor.
 
@@ -31,7 +31,7 @@ Trabajo Fin de Máster. MVP de una plataforma de autoservicio para que PYMEs des
 - **Pedir confirmación antes de instalar herramientas globales del sistema.**
 - Nunca guardar secretos en el repo: usar variables de entorno, `.env.example` y Secrets Manager en AWS.
 - En la raíz solo están `frontend/` y `backend/`, más `DEPENDENCIAS.txt`, `CLAUDE.md`, `.gitignore` y `.vscode/` (ver D-13). No crear más carpetas en la raíz.
-- Si algo es ambiguo, elegir la opción más simple que cumpla el MVP y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-14**).
+- Si algo es ambiguo, elegir la opción más simple que cumpla el MVP y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-17**).
 - **Registrar toda dependencia, herramienta, extensión, provider de Terraform o imagen base en `DEPENDENCIAS.txt`**, con versión, ámbito, forma de instalación y fecha, y añadir una línea al historial del final.
 
 ## Entorno (macOS 15.5, Apple Silicon)
@@ -62,17 +62,17 @@ Trabajo Fin de Máster. MVP de una plataforma de autoservicio para que PYMEs des
 - Arranque en local: F5 en VS Code ("ReleEasy API (mock)", que lee `backend/.env`, no versionado), o
   `cd backend && set -a; source .env; set +a; SPRING_PROFILES_ACTIVE=mock-fast ./mvnw spring-boot:run`.
 
-## Fase 3, portal: `frontend/` (pendiente)
+## Portal (hecho): `frontend/`
 
-- Angular 22 con standalone components, zoneless y TypeScript estricto.
-- **Estilos con Tailwind CSS** (D-06). **Hay que quitar Angular Material** (`@angular/material` y `@angular/cdk`, y sus cambios en `styles.scss` e `index.html`), que se añadió en la fase 1.
-- `config.json` en tiempo de ejecución (`public/config.json`) con la URL de la API, que se carga al arrancar; no se incrusta en el build.
-- Login sencillo con usuario y contraseña, enviados como cabecera Basic desde un interceptor.
-- Pantallas mínimas:
-  - Lista y alta de clientes, con el estado de creación de la cuenta AWS.
-  - Detalle del cliente con sus aplicaciones y el alta de una aplicación (repo, rama y plan).
-  - Detalle de la aplicación: URL pública e historial de releases con estado, SHA, fecha y mensaje de error. **Polling cada pocos segundos mientras haya un release en curso.**
-- Diseño sencillo y limpio, con pruebas (Vitest).
+- Angular 22 con standalone components, zoneless y TypeScript `strict` + `strictTemplates`. **Tailwind CSS 4.3.3** como plugin de PostCSS (`.postcssrc.json`) y `src/styles.css` con clases de componente (`.card`, `.btn-primary`, `.form-input`, `.data-table`...) hechas con `@apply`. Sin Angular Material (retirado, D-06). Estilos en CSS, no SCSS (D-16).
+- `main.ts` lee `public/config.json` (`{"apiUrl": ...}`) **antes** de arrancar Angular y lo inyecta como el token `APP_CONFIG` (`core/config/app-config.ts`).
+- `core/api`: `models.ts` (tipos de los DTOs) y `ReleasyApi` (cliente HTTP). `core/auth`: `AuthService` (Basic en `sessionStorage`, D-15), `authInterceptor` (solo para peticiones a `apiUrl`; un 401 lleva al login) y `authGuard`.
+- `shared`: `StatusBadge` (muestra el código de estado con una descripción en español), `Poller` (`setTimeout` sin solapes, cancelado con `DestroyRef`), `polling-policy.ts` (3 s si hay algo en curso, 15 s en reposo; D-14) y `describeHttpError` (lee el `detail` de ProblemDetail).
+- `features`: `login`, `tenants/tenant-list.page` (alta y lista), `tenants/tenant-detail.page` (cuenta, apps y alta de app; formulario desactivado si el cliente no está ACTIVE) y `apps/app-detail.page` (URL marcada como provisional hasta el primer SUCCEEDED, e historial de releases).
+- Las rutas reciben sus parámetros como inputs (`withComponentInputBinding`). Pantallas cargadas en diferido.
+- Pruebas: `npx ng test --watch=false` (19 pruebas). Los datos de prueba compartidos están en `src/testing/test-data.ts`.
+- Arranque: `cd frontend && npx ng serve` (http://localhost:4200). Necesita la API en `http://localhost:8080`.
+- **Pendiente para la fase 4:** decidir cómo se publica el portal en AWS (p. ej. S3 + CloudFront en la cuenta de administración, con su propio `config.json`) y anotarlo como D-17.
 
 ## Fase 4, Terraform y pipelines: `backend/deploy/` (pendiente)
 

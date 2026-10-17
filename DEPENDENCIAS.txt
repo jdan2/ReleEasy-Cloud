@@ -84,8 +84,11 @@ Gestor: npm (package-lock.json). Versiones exactas instaladas:
 @angular/forms | 22.2.3 | FRONTEND | ng new | 2026-10-17 | Formularios reactivos (alta de clientes y apps).
 @angular/platform-browser | 22.2.3 | FRONTEND | ng new | 2026-10-17 |
 @angular/router | 22.2.3 | FRONTEND | ng new | 2026-10-17 |
-@angular/material | 22.2.3 | FRONTEND | ng add @angular/material | 2026-10-17 | Libreria de componentes UI.
-@angular/cdk | 22.2.3 | FRONTEND | ng add @angular/material | 2026-10-17 | Dependencia de Angular Material.
+@angular/material | 22.2.3 | FRONTEND | ng add @angular/material | 2026-10-17 | RETIRADA en la fase 3 (npm uninstall): se usa Tailwind CSS (D-06).
+@angular/cdk | 22.2.3 | FRONTEND | ng add @angular/material | 2026-10-17 | RETIRADA en la fase 3 junto con Angular Material.
+tailwindcss | 4.3.3 | FRONTEND (dev) | npm install tailwindcss | 2026-10-17 | Estilos del portal (utilidades + clases con @apply en src/styles.css).
+@tailwindcss/postcss | 4.3.3 | FRONTEND (dev) | npm install @tailwindcss/postcss | 2026-10-17 | Plugin PostCSS de Tailwind 4, configurado en .postcssrc.json.
+postcss | 8.5.30 | FRONTEND (dev) | npm install postcss | 2026-10-17 | Procesador CSS que usa el builder de Angular.
 rxjs | 7.8.2 | FRONTEND | ng new | 2026-10-17 | Polling de releases (timer/switchMap).
 tslib | 2.8.1 | FRONTEND | ng new | 2026-10-17 |
 @angular/build | 22.2.3 | FRONTEND (dev) | ng new | 2026-10-17 | Builder (esbuild/Vite).
@@ -142,3 +145,4 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
 2026-10-17 | Extensiones de VS Code para Java, Spring Boot, Tailwind y Angular; configuracion .vscode/ y backend/.env local.
 2026-10-17 | Node: anadido frontend/.nvmrc (24.22.0) y "nvm use default" en ~/.zshrc, porque la terminal de VS Code heredaba Node 24.11.1 (incompatible con Angular CLI 22).
 2026-10-17 | Instalados Docker Desktop 4.95.0 y GitHub CLI (por el usuario).
+2026-10-17 | Fase 3: portal con Tailwind CSS 4.3.3 (+ @tailwindcss/postcss, postcss). Retirados @angular/material y @angular/cdk.

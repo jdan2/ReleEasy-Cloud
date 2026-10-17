@@ -73,3 +73,18 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 
 - **Contexto:** el enunciado limita la raíz a `frontend/` y `backend/`.
 - **Decisión:** se permite además la carpeta oculta `.vscode/`, que es configuración del editor y no código. Contiene la ruta del JDK, el arranque de la API con F5 y las extensiones recomendadas, y no guarda secretos: las variables las lee de `backend/.env`, que no se versiona.
+
+## D-14 · Polling del portal también en reposo
+
+- **Contexto:** el enunciado pide refrescar "cada pocos segundos mientras haya un release en curso". Si solo se hiciera polling en ese caso, un release nuevo disparado por un webhook no aparecería hasta recargar la página.
+- **Decisión:** el detalle de la aplicación refresca cada **3 s** si hay un release `PENDING` o `RUNNING`, cada **15 s** en reposo, y tiene un botón "Actualizar". Las pantallas de clientes refrescan cada 3 s solo mientras alguna cuenta está en `CREATING`.
+
+## D-15 · Login del portal y almacenamiento de credenciales
+
+- **Decisión:** el portal tiene un formulario de login que comprueba las credenciales con una petición real a la API. Guarda `usuario:contraseña` en Base64 en `sessionStorage` (se borra al cerrar la pestaña). Un interceptor añade la cabecera `Authorization` solo a las peticiones dirigidas a la API, y un 401 cierra la sesión.
+- **Motivo:** es lo mínimo compatible con el HTTP Basic del MVP. Un proveedor de identidad (p. ej. Cognito) queda como trabajo futuro.
+
+## D-16 · CSS en lugar de SCSS en el portal
+
+- **Decisión:** los estilos globales están en `src/styles.css`. Los componentes usan utilidades de Tailwind en las plantillas y, para patrones repetidos, clases de componente definidas con `@apply`.
+- **Motivo:** Tailwind CSS 4 se integra como plugin de PostCSS (`.postcssrc.json`) e importa con `@import 'tailwindcss'` desde CSS; SCSS no aporta nada aquí.

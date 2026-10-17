@@ -1,0 +1,96 @@
+<div class="flex flex-col gap-8">
+  @if (app(); as a) {
+    <a [routerLink]="['/tenants', a.tenantId]" class="link text-sm">← Volver al cliente</a>
+  }
+
+  @if (loadError(); as message) {
+    <p class="alert-error" role="alert">{{ message }}</p>
+  }
+
+  @if (app(); as a) {
+    <section class="card">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight">{{ a.name }}</h1>
+          <p class="mt-1 font-mono text-sm text-slate-500">
+            <a class="hover:underline" [href]="'https://github.com/' + a.repository" target="_blank" rel="noopener">{{
+              a.repository
+            }}</a>
+            · rama {{ a.branch }}
+          </p>
+        </div>
+        <span class="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600">{{ a.plan }}</span>
+      </div>
+
+      <div class="mt-6">
+        <p class="text-sm text-slate-500">URL pública</p>
+        @if (provisionalUrl()) {
+          <p class="mt-1 font-mono text-sm break-all text-slate-700">{{ a.url }}</p>
+          <p class="form-hint">Provisional: la URL definitiva se asigna con el primer despliegue correcto.</p>
+        } @else {
+          <a class="link mt-1 inline-block font-mono text-sm break-all" [href]="a.url" target="_blank" rel="noopener">{{
+            a.url
+          }}</a>
+        }
+      </div>
+    </section>
+
+    <section class="card overflow-hidden p-0" aria-labelledby="releases-title">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
+        <div>
+          <h2 id="releases-title" class="card-title">Releases</h2>
+          <p class="text-xs text-slate-500">
+            @if (inProgress()) {
+              <span class="text-sky-700">Despliegue en curso · actualizando cada {{ activePollSeconds }} s</span>
+            } @else if (lastUpdated(); as updated) {
+              Actualizado a las {{ updated | date: 'HH:mm:ss' }}
+            }
+          </p>
+        </div>
+        <button type="button" class="btn-secondary" (click)="refresh()">Actualizar</button>
+      </div>
+
+      @if (releases().length === 0) {
+        <p class="p-6 text-sm text-slate-500">
+          Aún no hay releases. Haz merge de un PR a <code class="font-mono">{{ a.branch }}</code> en
+          <code class="font-mono">{{ a.repository }}</code> para lanzar el primer despliegue.
+        </p>
+      } @else {
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead class="bg-slate-50">
+              <tr>
+                <th scope="col">Estado</th>
+                <th scope="col">Commit</th>
+                <th scope="col">Inicio</th>
+                <th scope="col">Última actualización</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (release of releases(); track release.id) {
+                <tr>
+                  <td><app-status-badge [status]="release.status" /></td>
+                  <td class="max-w-md">
+                    <a class="link font-mono text-xs" [href]="commitUrl(release)" target="_blank" rel="noopener" [title]="release.commitSha">{{
+                      release.commitSha.slice(0, 7)
+                    }}</a>
+                    @if (release.commitMessage) {
+                      <span class="ml-2 text-slate-600">{{ release.commitMessage }}</span>
+                    }
+                    @if (release.errorMessage) {
+                      <p class="mt-1 text-xs text-rose-600">{{ release.errorMessage }}</p>
+                    }
+                  </td>
+                  <td class="whitespace-nowrap text-xs text-slate-500">{{ release.createdAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                  <td class="whitespace-nowrap text-xs text-slate-500">{{ release.updatedAt | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  } @else if (!loadError()) {
+    <p class="text-sm text-slate-500">Cargando aplicación…</p>
+  }
+</div>
