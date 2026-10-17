@@ -146,3 +146,4 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
 2026-10-17 | Node: anadido frontend/.nvmrc (24.22.0) y "nvm use default" en ~/.zshrc, porque la terminal de VS Code heredaba Node 24.11.1 (incompatible con Angular CLI 22).
 2026-10-17 | Instalados Docker Desktop 4.95.0 y GitHub CLI (por el usuario).
 2026-10-17 | Fase 3: portal con Tailwind CSS 4.3.3 (+ @tailwindcss/postcss, postcss). Retirados @angular/material y @angular/cdk.
+2026-10-17 | Modo demo del portal (mockApi en config.json). Sin dependencias nuevas.

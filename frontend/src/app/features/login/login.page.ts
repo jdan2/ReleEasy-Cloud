@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { APP_CONFIG } from '../../core/config/app-config';
 import { describeHttpError } from '../../shared/http-error';
 
 @Component({
@@ -10,7 +11,13 @@ import { describeHttpError } from '../../shared/http-error';
   template: `
     <div class="mx-auto mt-12 max-w-sm">
       <h1 class="text-2xl font-semibold tracking-tight">Acceso de administrador</h1>
-      <p class="mt-1 text-sm text-slate-500">Usuario y contraseña configurados en la API.</p>
+      <p class="mt-1 text-sm text-slate-500">
+        @if (mockApi) {
+          Modo demo: sirve cualquier usuario y contraseña.
+        } @else {
+          Usuario y contraseña configurados en la API.
+        }
+      </p>
 
       <form class="card mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submit()">
         <div>
@@ -41,6 +48,7 @@ export class LoginPage {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
+  protected readonly mockApi = inject(APP_CONFIG).mockApi;
   protected readonly submitting = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly form = inject(NonNullableFormBuilder).group({

@@ -9,17 +9,22 @@ import { InjectionToken } from '@angular/core';
 export interface AppConfig {
   /** URL base de la API de la plataforma, sin barra final (p. ej. `http://localhost:8080`). */
   readonly apiUrl: string;
+  /**
+   * Modo demo: si es `true`, el portal no llama a la API y responde con datos simulados en memoria
+   * (ver `core/mock`). Sirve para enseñar el portal sin arrancar el backend.
+   */
+  readonly mockApi: boolean;
 }
 
 export const APP_CONFIG = new InjectionToken<AppConfig>('APP_CONFIG');
 
 /** Valida y normaliza el contenido de `config.json`. */
 export function parseAppConfig(raw: unknown): AppConfig {
-  const apiUrl = (raw as { apiUrl?: unknown } | null)?.apiUrl;
+  const { apiUrl, mockApi } = (raw ?? {}) as { apiUrl?: unknown; mockApi?: unknown };
   if (typeof apiUrl !== 'string' || apiUrl.trim() === '') {
     throw new Error('config.json debe contener "apiUrl" (texto no vacío)');
   }
-  return { apiUrl: apiUrl.trim().replace(/\/+$/, '') };
+  return { apiUrl: apiUrl.trim().replace(/\/+$/, ''), mockApi: mockApi === true };
 }
 
 /** Descarga `config.json` (sin caché, para que un cambio se note al recargar). */

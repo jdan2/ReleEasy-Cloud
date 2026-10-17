@@ -47,7 +47,19 @@
             }
           </p>
         </div>
-        <button type="button" class="btn-secondary" (click)="refresh()">Actualizar</button>
+        <div class="flex gap-2">
+          @if (mockApi) {
+            <button
+              type="button"
+              class="btn-secondary"
+              title="Modo demo: simula el webhook de GitHub tras un merge"
+              (click)="simulateMerge()"
+            >
+              Simular merge a {{ a.branch }}
+            </button>
+          }
+          <button type="button" class="btn-secondary" (click)="refresh()">Actualizar</button>
+        </div>
       </div>
 
       @if (releases().length === 0) {

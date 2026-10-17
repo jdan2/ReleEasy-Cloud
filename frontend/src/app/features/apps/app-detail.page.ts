@@ -4,6 +4,8 @@ import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { App, Release } from '../../core/api/models';
 import { ReleasyApi } from '../../core/api/releasy-api.service';
+import { APP_CONFIG } from '../../core/config/app-config';
+import { MockBackend } from '../../core/mock/mock-backend';
 import { describeHttpError } from '../../shared/http-error';
 import { Poller } from '../../shared/poller';
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, hasReleaseInProgress, releasePollInterval } from '../../shared/polling-policy';
@@ -25,8 +27,10 @@ export class AppDetailPage implements OnInit {
   readonly appId = input.required<string>();
 
   private readonly api = inject(ReleasyApi);
+  private readonly mockBackend = inject(MockBackend);
   private readonly poller = new Poller(() => this.load(), inject(DestroyRef));
 
+  protected readonly mockApi = inject(APP_CONFIG).mockApi;
   protected readonly app = signal<App | null>(null);
   protected readonly releases = signal<Release[]>([]);
   protected readonly loadError = signal<string | null>(null);
@@ -41,6 +45,12 @@ export class AppDetailPage implements OnInit {
   }
 
   protected refresh(): void {
+    this.load();
+  }
+
+  /** Solo en modo demo: simula el webhook de un merge a la rama de la aplicación. */
+  protected simulateMerge(): void {
+    this.mockBackend.simulatePush(this.appId());
     this.load();
   }
 

@@ -16,9 +16,9 @@ Trabajo Fin de Máster. MVP de una plataforma de autoservicio para que PYMEs des
 |---|---|
 | 1. Estructura y dependencias | ✅ Terminada |
 | 2. Backend | ✅ Terminada: 43 pruebas en verde y flujo completo verificado en modo mock con curl |
-| 3. Frontend (portal) | ✅ Terminada: Tailwind 4, 4 pantallas, 19 pruebas Vitest en verde, build correcto e integración con la API comprobada (config.json y CORS) |
+| 3. Frontend (portal) | ✅ Terminada: Tailwind 4, 4 pantallas, 24 pruebas Vitest en verde, modo demo sin backend (D-17), build correcto e integración con la API comprobada (config.json y CORS) |
 | 4. Terraform y pipelines | ⏳ **SIGUIENTE**: `backend/deploy/*` vacías |
-| 5. Documentación | 🟡 Existen `backend/docs/decisiones.md` (D-01 a D-16) y `frontend/README.md` |
+| 5. Documentación | 🟡 Existen `backend/docs/decisiones.md` (D-01 a D-17) y `frontend/README.md` |
 
 **Git:** hay commits locales en `main`, con remoto `origin` = https://github.com/jdan2/ReleEasy-Cloud. **El push está pendiente:** la cuenta `Marmolito` aún no tiene permiso de escritura (error 403). Cuando lo tenga, ejecutar `git push -u origin main`.
 
@@ -31,7 +31,7 @@ Trabajo Fin de Máster. MVP de una plataforma de autoservicio para que PYMEs des
 - **Pedir confirmación antes de instalar herramientas globales del sistema.**
 - Nunca guardar secretos en el repo: usar variables de entorno, `.env.example` y Secrets Manager en AWS.
 - En la raíz solo están `frontend/` y `backend/`, más `DEPENDENCIAS.txt`, `CLAUDE.md`, `.gitignore` y `.vscode/` (ver D-13). No crear más carpetas en la raíz.
-- Si algo es ambiguo, elegir la opción más simple que cumpla el MVP y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-17**).
+- Si algo es ambiguo, elegir la opción más simple que cumpla el MVP y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-18**).
 - **Registrar toda dependencia, herramienta, extensión, provider de Terraform o imagen base en `DEPENDENCIAS.txt`**, con versión, ámbito, forma de instalación y fecha, y añadir una línea al historial del final.
 
 ## Entorno (macOS 15.5, Apple Silicon)
@@ -70,9 +70,10 @@ Trabajo Fin de Máster. MVP de una plataforma de autoservicio para que PYMEs des
 - `shared`: `StatusBadge` (muestra el código de estado con una descripción en español), `Poller` (`setTimeout` sin solapes, cancelado con `DestroyRef`), `polling-policy.ts` (3 s si hay algo en curso, 15 s en reposo; D-14) y `describeHttpError` (lee el `detail` de ProblemDetail).
 - `features`: `login`, `tenants/tenant-list.page` (alta y lista), `tenants/tenant-detail.page` (cuenta, apps y alta de app; formulario desactivado si el cliente no está ACTIVE) y `apps/app-detail.page` (URL marcada como provisional hasta el primer SUCCEEDED, e historial de releases).
 - Las rutas reciben sus parámetros como inputs (`withComponentInputBinding`). Pantallas cargadas en diferido.
-- Pruebas: `npx ng test --watch=false` (19 pruebas). Los datos de prueba compartidos están en `src/testing/test-data.ts`.
+- **Modo demo (D-17):** `public/config.json` tiene ahora `"mockApi": true`: el portal funciona sin backend (`core/mock/`). **Hay que ponerlo a `false` para conectar con la API real.**
+- Pruebas: `npx ng test --watch=false` (24 pruebas). Los datos de prueba compartidos están en `src/testing/test-data.ts`.
 - Arranque: `cd frontend && npx ng serve` (http://localhost:4200). Necesita la API en `http://localhost:8080`.
-- **Pendiente para la fase 4:** decidir cómo se publica el portal en AWS (p. ej. S3 + CloudFront en la cuenta de administración, con su propio `config.json`) y anotarlo como D-17.
+- **Pendiente para la fase 4:** decidir cómo se publica el portal en AWS (p. ej. S3 + CloudFront en la cuenta de administración, con su propio `config.json`) y anotarlo como D-18.
 
 ## Fase 4, Terraform y pipelines: `backend/deploy/` (pendiente)
 

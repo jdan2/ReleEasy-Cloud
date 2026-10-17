@@ -2,7 +2,7 @@ import { App, Release, ReleaseStatus, Tenant } from '../app/core/api/models';
 import { AppConfig } from '../app/core/config/app-config';
 
 /** Datos de prueba compartidos por los specs. */
-export const TEST_CONFIG: AppConfig = { apiUrl: 'http://api.test' };
+export const TEST_CONFIG: AppConfig = { apiUrl: 'http://api.test', mockApi: false };
 
 export function aTenant(overrides: Partial<Tenant> = {}): Tenant {
   return {

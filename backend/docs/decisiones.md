@@ -88,3 +88,12 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 
 - **Decisión:** los estilos globales están en `src/styles.css`. Los componentes usan utilidades de Tailwind en las plantillas y, para patrones repetidos, clases de componente definidas con `@apply`.
 - **Motivo:** Tailwind CSS 4 se integra como plugin de PostCSS (`.postcssrc.json`) e importa con `@import 'tailwindcss'` desde CSS; SCSS no aporta nada aquí.
+
+## D-17 · Modo demo del portal sin backend (`mockApi`)
+
+- **Contexto:** el autor quiere enseñar el portal sin arrancar la API.
+- **Decisión:** `config.json` admite `"mockApi": true`. Con ese valor, `mockApiInterceptor` responde a las llamadas a la API con `MockBackend`, que guarda los datos en memoria y aplica las mismas reglas y estados que el modo mock del backend. Además:
+  - se acepta cualquier usuario y contraseña;
+  - una franja amarilla avisa de que el modo demo está activo;
+  - el detalle de la aplicación muestra un botón "Simular merge", en lugar de depender de GitHub.
+- **Uso:** está activado mientras se revisa el front. Para usar la API real hay que poner `"mockApi": false` en `config.json`, sin recompilar. En los despliegues reales debe estar siempre en `false`.
