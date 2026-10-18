@@ -24,7 +24,7 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 
 **Prioridad del usuario:** de momento le interesa sobre todo el **flujo del front**. Antes de empezar con el backend o el Terraform, preguntarle por dónde seguir.
 
-**Git:** hay commits locales en `main`, con remoto `origin` = https://github.com/jdan2/ReleEasy-Cloud. **El push está pendiente:** la cuenta `Marmolito` no tiene permiso de escritura (error 403).
+**Git:** la rama `main` está subida a https://github.com/jdan2/ReleEasy-Cloud (repo **público**), con `origin/main` como rama de seguimiento. La cuenta `Marmolito` es colaboradora con permiso de escritura (`gh` autenticado).
 
 **Docker Desktop:** instalado; el usuario tiene que abrirlo (`open -a Docker`) para que arranque el motor.
 
