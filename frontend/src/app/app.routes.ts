@@ -42,6 +42,12 @@ export const routes: Routes = [
         loadComponent: () => import('./features/portal/github-connection.page').then((m) => m.GithubConnectionPage),
       },
       {
+        // "Setup URL" de la GitHub App: GitHub vuelve aquí con ?installation_id=...&setup_action=install
+        path: 'github/callback',
+        title: 'GitHub · ReleEasy Cloud',
+        loadComponent: () => import('./features/portal/github-callback.page').then((m) => m.GithubCallbackPage),
+      },
+      {
         path: 'templates',
         title: 'Plantillas · ReleEasy Cloud',
         loadComponent: () => import('./features/portal/template-catalog.page').then((m) => m.TemplateCatalogPage),

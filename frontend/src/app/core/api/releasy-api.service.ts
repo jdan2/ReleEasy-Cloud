@@ -6,6 +6,7 @@ import { Template } from '../templates/template.model';
 import {
   App,
   ConnectAwsRequest,
+  ConnectGithubRequest,
   CreateAppRequest,
   GithubRepository,
   LoginRequest,
@@ -53,8 +54,8 @@ export class ReleasyApi {
     return this.http.delete<Tenant>(`${this.baseUrl}/me/aws-connection`);
   }
 
-  connectGithub(): Observable<Tenant> {
-    return this.http.post<Tenant>(`${this.baseUrl}/me/github-connection`, {});
+  connectGithub(request: ConnectGithubRequest): Observable<Tenant> {
+    return this.http.post<Tenant>(`${this.baseUrl}/me/github-connection`, request);
   }
 
   disconnectGithub(): Observable<Tenant> {

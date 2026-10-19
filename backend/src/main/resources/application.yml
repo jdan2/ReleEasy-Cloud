@@ -10,7 +10,21 @@ releasy:
     username: ${RELEASY_ADMIN_USER:admin}
     # Obligatoria. Sin valor por defecto: la API no arranca si falta.
     password: ${RELEASY_ADMIN_PASSWORD:}
+  auth:
+    # Obligatorio, de al menos 32 caracteres. Firma los JWT de sesión (HMAC-SHA256).
+    jwt-secret: ${RELEASY_JWT_SECRET:}
+    token-ttl: ${RELEASY_TOKEN_TTL:12h}
   github:
+    # mock: repositorios ficticios (por defecto) | real: API de GitHub como la GitHub App de ReleEasy
+    mode: ${RELEASY_GITHUB_MODE:mock}
+    # Solo en modo real: App ID, ruta del .pem con la clave privada (fuera del repositorio) y
+    # client ID / client secret para la autorización OAuth del usuario (D-26).
+    app-id: ${RELEASY_GITHUB_APP_ID:}
+    private-key-path: ${RELEASY_GITHUB_PRIVATE_KEY_PATH:}
+    client-id: ${RELEASY_GITHUB_CLIENT_ID:}
+    client-secret: ${RELEASY_GITHUB_CLIENT_SECRET:}
+    api-url: https://api.github.com
+    oauth-url: https://github.com
     # Obligatorio. Mismo secreto que se configura en el webhook de GitHub.
     webhook-secret: ${RELEASY_GITHUB_WEBHOOK_SECRET:}
   apps:
@@ -18,20 +32,19 @@ releasy:
   cors:
     allowed-origins: ${RELEASY_CORS_ALLOWED_ORIGINS:http://localhost:4200}
   aws:
-    # mock: simula Organizations, Step Functions y CodeBuild, sin coste ni efectos en AWS (por defecto)
-    # real: AWS SDK v2 contra la cuenta de administración
+    # mock: simula Step Functions y CodeBuild y guarda los datos en memoria, sin coste ni efectos en AWS (por defecto)
+    # real: AWS SDK v2 contra la cuenta de la plataforma
     mode: ${RELEASY_AWS_MODE:mock}
     region: ${AWS_REGION:eu-west-1}
-    account-role-name: OrganizationAccountAccessRole
-    account-creation-poll-interval: ${RELEASY_ACCOUNT_POLL_INTERVAL:15s}
-    account-creation-timeout: 30m
+    # Cuenta AWS de la plataforma: en ella debe confiar el rol ReleEasyDeployRole de cada cliente.
+    platform-account-id: ${RELEASY_PLATFORM_ACCOUNT_ID:000000000000}
     state-machine-arn: ${RELEASY_STATE_MACHINE_ARN:}
     dynamodb:
+      users-table: ${RELEASY_TABLE_USERS:releasy-users}
       tenants-table: ${RELEASY_TABLE_TENANTS:releasy-tenants}
       apps-table: ${RELEASY_TABLE_APPS:releasy-apps}
       releases-table: ${RELEASY_TABLE_RELEASES:releasy-releases}
     mock:
-      account-creation-delay: 10s
       release-start-delay: 3s
       release-duration: 20s
 
@@ -52,9 +65,10 @@ spring:
       on-profile: mock-fast
 # Perfil opcional para la demo: tiempos de simulación cortos.
 releasy:
+  demo:
+    # Crea al arrancar el cliente demo@ferreteria-lopez.es / demo1234 (sin conexiones).
+    seed-user: true
   aws:
-    account-creation-poll-interval: 2s
     mock:
-      account-creation-delay: 5s
       release-start-delay: 2s
       release-duration: 10s

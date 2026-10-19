@@ -2,13 +2,14 @@ releasy:
   admin:
     username: admin
     password: test-password
+  auth:
+    jwt-secret: secreto-de-prueba-de-al-menos-32-caracteres
   github:
+    mode: mock
     webhook-secret: test-webhook-secret
   aws:
     mode: mock
-    # La prueba de integración llama al poller directamente; la tarea periódica no interviene.
-    account-creation-poll-interval: 1h
+    platform-account-id: "111122223333"
     mock:
-      account-creation-delay: 0s
       release-start-delay: 0s
       release-duration: 0s

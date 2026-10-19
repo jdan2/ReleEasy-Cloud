@@ -1,27 +1,25 @@
 package com.releasy.web.dto;
 
-import com.releasy.domain.app.AppPlan;
+import com.releasy.application.app.AppService.NewApp;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
+
+import java.util.Map;
 
 /**
- * @param name       nombre corto: minúsculas, dígitos y guiones (se usa en nombres de recursos AWS)
- * @param repository repositorio de GitHub en formato {@code owner/repo}
- * @param branch     rama a desplegar; si se omite, {@code master}
- * @param plan       plan contratado
+ * Alta de una aplicación ({@code POST /api/me/apps}). Aquí solo se comprueba que vienen los campos; el
+ * formato del nombre, el repositorio, la rama y las opciones los valida {@code AppService} con las
+ * mismas reglas y mensajes que el portal.
  */
 public record CreateAppRequest(
-        @NotBlank @Pattern(regexp = "^[a-z][a-z0-9-]{2,19}$",
-                message = "debe empezar por letra y tener 3-20 caracteres: minúsculas, dígitos o guiones") String name,
-        @NotBlank @Pattern(regexp = "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
-                message = "debe tener el formato owner/repo") String repository,
-        @Pattern(regexp = "^[A-Za-z0-9._/-]{1,100}$", message = "nombre de rama no válido") String branch,
-        @NotNull AppPlan plan) {
+        @NotBlank String name,
+        @NotBlank String templateId,
+        @NotBlank String repository,
+        @NotBlank String branch,
+        @NotNull Map<String, Object> options,
+        Map<String, Object> usage) {
 
-    public static final String DEFAULT_BRANCH = "master";
-
-    public String branchOrDefault() {
-        return branch == null || branch.isBlank() ? DEFAULT_BRANCH : branch;
+    public NewApp toNewApp() {
+        return new NewApp(name, templateId, repository, branch, options, usage == null ? Map.of() : usage);
     }
 }

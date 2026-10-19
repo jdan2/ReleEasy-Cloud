@@ -2,7 +2,6 @@ package com.releasy.infrastructure.memory;
 
 import com.releasy.domain.tenant.Tenant;
 import com.releasy.domain.tenant.TenantRepository;
-import com.releasy.domain.tenant.TenantStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -30,10 +29,5 @@ public class InMemoryTenantRepository implements TenantRepository {
     @Override
     public List<Tenant> findAll() {
         return List.copyOf(tenants.values());
-    }
-
-    @Override
-    public List<Tenant> findByStatus(TenantStatus status) {
-        return tenants.values().stream().filter(t -> t.status() == status).toList();
     }
 }

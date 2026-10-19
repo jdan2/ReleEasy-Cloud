@@ -1,4 +1,6 @@
 {
   "apiUrl": "http://localhost:8080",
-  "mockApi": true
+  "mockApi": false,
+  "githubAppSlug": null,
+  "githubClientId": null
 }

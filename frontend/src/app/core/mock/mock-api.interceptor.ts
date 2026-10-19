@@ -1,7 +1,7 @@
 import { HttpErrorResponse, HttpInterceptorFn, HttpRequest, HttpResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Observable, delay, dematerialize, materialize, of, throwError } from 'rxjs';
-import { ConnectAwsRequest, CreateAppRequest, LoginRequest, RegisterRequest } from '../api/models';
+import { ConnectAwsRequest, ConnectGithubRequest, CreateAppRequest, LoginRequest, RegisterRequest } from '../api/models';
 import { APP_CONFIG } from '../config/app-config';
 import { MockApiError, MockBackend } from './mock-backend';
 
@@ -32,7 +32,7 @@ const ROUTES: readonly [string, RegExp, Handler][] = [
   ['GET', /^\/api\/me\/tenant$/, (b, t) => b.myTenant(t)],
   ['POST', /^\/api\/me\/aws-connection$/, (b, t, body) => b.connectAws(t, (body as ConnectAwsRequest).roleArn)],
   ['DELETE', /^\/api\/me\/aws-connection$/, (b, t) => b.disconnectAws(t)],
-  ['POST', /^\/api\/me\/github-connection$/, (b, t) => b.connectGithub(t)],
+  ['POST', /^\/api\/me\/github-connection$/, (b, t, body) => b.connectGithub(t, body as ConnectGithubRequest)],
   ['DELETE', /^\/api\/me\/github-connection$/, (b, t) => b.disconnectGithub(t)],
   ['GET', /^\/api\/me\/github\/repositories$/, (b, t) => b.myRepositories(t)],
   ['GET', /^\/api\/me\/apps$/, (b, t) => b.myApps(t)],

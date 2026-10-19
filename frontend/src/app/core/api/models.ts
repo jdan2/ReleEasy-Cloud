@@ -59,6 +59,8 @@ export interface GithubConnection {
   status: ConnectionStatus;
   accountLogin: string | null;
   installationId: number | null;
+  /** Usuario de GitHub que autorizó la conexión (OAuth, D-26). */
+  authorizedBy: string | null;
   connectedAt: string | null;
 }
 
@@ -74,6 +76,15 @@ export interface Tenant {
 
 export interface ConnectAwsRequest {
   roleArn: string;
+}
+
+/**
+ * Lo que GitHub entrega al portal al volver de instalar o autorizar la GitHub App (D-26): un código
+ * OAuth de un solo uso y, si se acaba de instalar, el `installation_id`.
+ */
+export interface ConnectGithubRequest {
+  code: string;
+  installationId?: number | null;
 }
 
 export interface GithubRepository {

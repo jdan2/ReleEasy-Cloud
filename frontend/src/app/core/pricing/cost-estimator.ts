@@ -13,7 +13,7 @@ export interface CostEstimate {
   lines: CostLine[];
   /** Lo que AWS facturaría a la cuenta del cliente. */
   awsMonthlyUsd: number;
-  /** Coste de AWS si el backend escalara al máximo de contenedores todo el mes. */
+  /** Coste de AWS si el backend escalara al máximo de instancias todo el mes. */
   awsMaxMonthlyUsd: number;
   /** Cuota simulada de la plataforma. */
   platformFeeUsd: number;
@@ -29,8 +29,9 @@ const RUM_EVENTS_PER_PAGE_VIEW = 3;
 const WAF_RULES = 3;
 const LOG_KB_PER_REQUEST = 1;
 const XRAY_SAMPLING = 0.05;
-const SQS_REQUESTS_PER_MESSAGE = 3; // enviar, recibir y borrar
 const NAT_GB_PER_MONTH = 5; // llamadas salientes del backend (APIs externas, ECR...)
+const DISK_GB_PER_INSTANCE = 20; // volumen raíz gp3 de cada instancia
+const DETAILED_METRICS_PER_INSTANCE = 7; // métricas de EC2 que pasan a ser de 1 minuto
 const IMAGE_SIZE_GB = 0.4;
 const FRONT_ALARMS = 2;
 const BACKEND_ALARMS = 4;
@@ -118,40 +119,41 @@ function backendLines(
 ): { lines: CostLine[]; scalingExtraUsd: number } {
   const requests = num(usage['apiRequestsPerMonth']);
   const responseGb = (requests * num(usage['responseSizeKb'])) / (1024 * 1024);
-  const [vcpu, memoryGb] = String(options['task_size'] ?? '0.5-1').split('-').map(Number);
-  const minTasks = num(options['min_tasks'], 1);
-  const maxTasks = Math.max(minTasks, num(options['max_tasks'], minTasks));
-  const taskMonthly = (vcpu * P.fargate.perVcpuHour + memoryGb * P.fargate.perGbHour) * HOURS_PER_MONTH;
+  const instanceType = String(options['instance_type'] ?? 't3.small');
+  const minInstances = num(options['min_instances'], 1);
+  const maxInstances = Math.max(minInstances, num(options['max_instances'], minInstances));
+  const instanceMonthly =
+    num(P.ec2PerHour[instanceType], P.ec2PerHour['t3.small']) * HOURS_PER_MONTH + DISK_GB_PER_INSTANCE * P.ebs.gp3PerGbMonth;
   const useApiGateway = options['api_exposure'] === 'api_gateway';
   const lines: CostLine[] = [];
 
   lines.push({
-    service: 'ECS Fargate',
+    service: 'EC2 Auto Scaling',
     detail:
-      `${minTasks} contenedor(es) de ${vcpu} vCPU y ${memoryGb} GB` +
-      (maxTasks > minTasks ? `, con autoescalado hasta ${maxTasks}` : ''),
-    monthlyUsd: minTasks * taskMonthly,
+      `${minInstances} instancia(s) ${instanceType} con ${DISK_GB_PER_INSTANCE} GB de disco` +
+      (maxInstances > minInstances ? `, con autoescalado hasta ${maxInstances}` : ''),
+    monthlyUsd: minInstances * instanceMonthly,
   });
 
+  // El ALB siempre existe: es el que reparte entre instancias. Con API Gateway pasa a ser interno.
+  const averageRps = requests / SECONDS_PER_MONTH;
+  const lcus = Math.max(1, averageRps / 25);
+  lines.push({
+    service: 'Application Load Balancer',
+    detail: `${useApiGateway ? 'Interno, ' : ''}coste fijo por hora y ${fmt(lcus)} LCU de media`,
+    monthlyUsd: (P.alb.perHour + lcus * P.alb.perLcuHour) * HOURS_PER_MONTH,
+  });
   if (useApiGateway) {
     lines.push({
       service: 'API Gateway',
-      detail: `HTTP API con ${fmt(requests)} peticiones, VPC Link y Cloud Map`,
-      monthlyUsd: (requests / 1e6) * P.apiGateway.perMillionHttpApiRequests + maxTasks * P.cloudMap.perRegisteredInstance,
-    });
-  } else {
-    const averageRps = requests / SECONDS_PER_MONTH;
-    const lcus = Math.max(1, averageRps / 25);
-    lines.push({
-      service: 'Application Load Balancer',
-      detail: `Coste fijo por hora y ${fmt(lcus)} LCU de media`,
-      monthlyUsd: (P.alb.perHour + lcus * P.alb.perLcuHour) * HOURS_PER_MONTH,
+      detail: `HTTP API con ${fmt(requests)} peticiones (el VPC Link no tiene coste)`,
+      monthlyUsd: (requests / 1e6) * P.apiGateway.perMillionHttpApiRequests,
     });
   }
 
   lines.push({
     service: 'NAT Gateway',
-    detail: `Salida a internet de los contenedores (~${NAT_GB_PER_MONTH} GB)`,
+    detail: `Salida a internet de las instancias (~${NAT_GB_PER_MONTH} GB)`,
     monthlyUsd: P.natGateway.perHour * HOURS_PER_MONTH + NAT_GB_PER_MONTH * P.natGateway.perGbProcessed,
   });
 
@@ -184,8 +186,12 @@ function backendLines(
       monthlyUsd: BACKEND_ALARMS * P.cloudWatch.perAlarm,
     });
   }
-  if (options['container_insights'] === true) {
-    lines.push({ service: 'Container Insights', detail: 'Métricas detalladas del servicio', monthlyUsd: P.containerInsightsPerService });
+  if (options['detailed_monitoring'] === true) {
+    lines.push({
+      service: 'Monitorización detallada',
+      detail: `${DETAILED_METRICS_PER_INSTANCE} métricas de 1 minuto por instancia`,
+      monthlyUsd: minInstances * DETAILED_METRICS_PER_INSTANCE * P.cloudWatch.perCustomMetric,
+    });
   }
   if (options['xray_tracing'] === true) {
     const traces = requests * XRAY_SAMPLING;
@@ -195,17 +201,9 @@ function backendLines(
       monthlyUsd: (traces / 1e6) * P.xray.perMillionTracesRecorded,
     });
   }
-  if (options['sqs_queue'] === true) {
-    const messages = num(usage['sqsMessagesPerMonth']);
-    lines.push({
-      service: 'Amazon SQS',
-      detail: `${fmt(messages)} mensajes (cola + DLQ)`,
-      monthlyUsd: ((messages * SQS_REQUESTS_PER_MESSAGE) / 1e6) * P.sqs.perMillionRequests,
-    });
-  }
   lines.push({ service: 'ECR', detail: 'Imágenes Docker del backend', monthlyUsd: IMAGE_SIZE_GB * P.ecr.perGbMonth });
 
-  return { lines, scalingExtraUsd: (maxTasks - minTasks) * taskMonthly };
+  return { lines, scalingExtraUsd: (maxInstances - minInstances) * instanceMonthly };
 }
 
 function assumptions(hasFront: boolean, hasBack: boolean): string[] {
@@ -214,7 +212,7 @@ function assumptions(hasFront: boolean, hasBack: boolean): string[] {
     list.push(`Cada visita genera unas ${REQUESTS_PER_PAGE_VIEW} peticiones a CloudFront.`);
   }
   if (hasBack) {
-    list.push('El backend funciona 24/7 con el mínimo de contenedores.');
+    list.push('El backend funciona 24/7 con el mínimo de instancias.');
     list.push(`Se generan ~${LOG_KB_PER_REQUEST} KB de logs por petición.`);
   }
   return list;

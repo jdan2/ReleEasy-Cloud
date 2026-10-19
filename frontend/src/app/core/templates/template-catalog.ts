@@ -71,7 +71,7 @@ const FRONT_DOMAIN: OptionGroup = {
   ],
 };
 
-// ---------- Grupos de opciones del back (ECS Fargate) ----------
+// ---------- Grupos de opciones del back (EC2 con Auto Scaling detrás de un ALB, D-23) ----------
 
 const BACK_EXPOSURE: OptionGroup = {
   id: 'back-exposure',
@@ -82,7 +82,7 @@ const BACK_EXPOSURE: OptionGroup = {
       type: 'select',
       key: 'api_exposure',
       label: 'Punto de entrada',
-      help: 'API Gateway añade límite de peticiones y métricas por ruta, y evita el coste fijo del balanceador.',
+      help: 'API Gateway se coloca delante del balanceador (que pasa a ser interno) y añade límite de peticiones y métricas por ruta.',
       default: 'alb',
       choices: [
         { value: 'alb', label: 'Balanceador de carga (ALB)' },
@@ -105,25 +105,26 @@ const BACK_EXPOSURE: OptionGroup = {
 const BACK_CAPACITY: OptionGroup = {
   id: 'back-capacity',
   title: 'Capacidad',
-  description: 'Tamaño y número de contenedores de tu backend.',
+  description: 'Tipo y número de servidores (instancias EC2) que ejecutan tu backend.',
   fields: [
     {
       type: 'select',
-      key: 'task_size',
-      label: 'Tamaño de cada contenedor',
-      default: '0.5-1',
+      key: 'instance_type',
+      label: 'Tipo de instancia',
+      help: 'Cada instancia ejecuta la imagen Docker de tu backend.',
+      default: 't3.small',
       choices: [
-        { value: '0.25-0.5', label: '0,25 vCPU · 0,5 GB (pruebas)' },
-        { value: '0.5-1', label: '0,5 vCPU · 1 GB (recomendado)' },
-        { value: '1-2', label: '1 vCPU · 2 GB' },
-        { value: '2-4', label: '2 vCPU · 4 GB' },
+        { value: 't3.micro', label: 't3.micro · 2 vCPU · 1 GB (pruebas)' },
+        { value: 't3.small', label: 't3.small · 2 vCPU · 2 GB (recomendado)' },
+        { value: 't3.medium', label: 't3.medium · 2 vCPU · 4 GB' },
+        { value: 't3.large', label: 't3.large · 2 vCPU · 8 GB' },
       ],
     },
-    { type: 'number', key: 'min_tasks', label: 'Contenedores mínimos', default: 1, min: 1, max: 10 },
+    { type: 'number', key: 'min_instances', label: 'Instancias mínimas', default: 1, min: 1, max: 10 },
     {
       type: 'number',
-      key: 'max_tasks',
-      label: 'Contenedores máximos',
+      key: 'max_instances',
+      label: 'Instancias máximas',
       help: 'Si es mayor que el mínimo, se activa el autoescalado por uso de CPU.',
       default: 2,
       min: 1,
@@ -159,8 +160,9 @@ const BACK_OBSERVABILITY: OptionGroup = {
     },
     {
       type: 'toggle',
-      key: 'container_insights',
-      label: 'Métricas detalladas de contenedores (Container Insights)',
+      key: 'detailed_monitoring',
+      label: 'Métricas de EC2 cada minuto (monitorización detallada)',
+      help: 'Por defecto CloudWatch recoge las métricas de las instancias cada 5 minutos.',
       default: false,
     },
     {
@@ -169,32 +171,6 @@ const BACK_OBSERVABILITY: OptionGroup = {
       label: 'Trazas distribuidas (AWS X-Ray)',
       help: 'Sigue cada petición a través de tu código. Se muestrea el 5 % de las peticiones.',
       default: false,
-    },
-  ],
-};
-
-const BACK_MESSAGING: OptionGroup = {
-  id: 'back-messaging',
-  title: 'Mensajería',
-  description: 'Procesamiento asíncrono de tareas.',
-  fields: [
-    {
-      type: 'toggle',
-      key: 'sqs_queue',
-      label: 'Cola de mensajes (Amazon SQS)',
-      help: 'Cola estándar con cola de mensajes fallidos (DLQ). Tu app recibe su URL en RELEASY_SQS_QUEUE_URL.',
-      default: false,
-    },
-    {
-      type: 'number',
-      key: 'sqs_visibility_timeout',
-      label: 'Tiempo de visibilidad',
-      help: 'Tiempo que tiene tu app para procesar un mensaje antes de que vuelva a la cola.',
-      unit: 's',
-      default: 30,
-      min: 0,
-      max: 43_200,
-      visibleWhen: { key: 'sqs_queue', equals: true },
     },
   ],
 };
@@ -242,26 +218,17 @@ const FRONT_USAGE: UsageField[] = [
 const BACK_USAGE: UsageField[] = [
   { key: 'apiRequestsPerMonth', label: 'Peticiones a la API al mes', unit: 'peticiones', default: 1_000_000, min: 0, step: 10_000 },
   { key: 'responseSizeKb', label: 'Tamaño medio de respuesta', unit: 'KB', default: 10, min: 1, step: 1 },
-  {
-    key: 'sqsMessagesPerMonth',
-    label: 'Mensajes SQS al mes',
-    unit: 'mensajes',
-    default: 100_000,
-    min: 0,
-    step: 10_000,
-    visibleWhen: { key: 'sqs_queue', equals: true },
-  },
 ];
 
 function presets(front: boolean, back: boolean): UsagePreset[] {
-  const values = (pageViews: number, requests: number, messages: number): UsageEstimate => ({
+  const values = (pageViews: number, requests: number): UsageEstimate => ({
     ...(front ? { pageViewsPerMonth: pageViews } : {}),
-    ...(back ? { apiRequestsPerMonth: requests, sqsMessagesPerMonth: messages } : {}),
+    ...(back ? { apiRequestsPerMonth: requests } : {}),
   });
   return [
-    { id: 'low', label: 'Bajo', description: 'Web corporativa o app interna', values: values(10_000, 100_000, 10_000) },
-    { id: 'medium', label: 'Medio', description: 'Tienda o servicio con clientes activos', values: values(100_000, 1_000_000, 100_000) },
-    { id: 'high', label: 'Alto', description: 'Producto con mucho tráfico', values: values(1_000_000, 10_000_000, 1_000_000) },
+    { id: 'low', label: 'Bajo', description: 'Web corporativa o app interna', values: values(10_000, 100_000) },
+    { id: 'medium', label: 'Medio', description: 'Tienda o servicio con clientes activos', values: values(100_000, 1_000_000) },
+    { id: 'high', label: 'Alto', description: 'Producto con mucho tráfico', values: values(1_000_000, 10_000_000) },
   ];
 }
 
@@ -287,17 +254,17 @@ export const TEMPLATES: readonly Template[] = [
   {
     id: 'springboot-api',
     name: 'Spring Boot',
-    tagline: 'API Java en contenedores gestionados',
+    tagline: 'API Java en servidores con autoescalado',
     description:
-      'Construye tu backend Spring Boot como imagen Docker y lo ejecuta en ECS Fargate, con despliegues sin cortes y vuelta atrás automática si falla.',
+      'Construye tu backend Spring Boot como imagen Docker y lo ejecuta en instancias EC2 con Auto Scaling detrás de un balanceador. Las instancias se renuevan de forma escalonada y, si las nuevas no pasan el health check, se vuelve a la versión anterior.',
     layers: ['backend'],
-    awsServices: ['ECR', 'ECS Fargate', 'VPC', 'CloudWatch Logs'],
+    awsServices: ['ECR', 'EC2 Auto Scaling', 'ALB', 'VPC', 'CloudWatch Logs'],
     repoContract: [
       '/backend con Maven Wrapper (mvnw) y Java 21; se ejecuta ./mvnw -B verify.',
       'Dockerfile opcional; si no hay, se usa uno basado en eclipse-temurin:21-jre.',
       'La app escucha en el puerto 8080 y expone /actuator/health.',
     ],
-    optionGroups: [BACK_EXPOSURE, BACK_CAPACITY, BACK_OBSERVABILITY, BACK_MESSAGING, BACK_ENV, NOTIFICATIONS],
+    optionGroups: [BACK_EXPOSURE, BACK_CAPACITY, BACK_OBSERVABILITY, BACK_ENV, NOTIFICATIONS],
     usageFields: BACK_USAGE,
     usagePresets: presets(false, true),
   },
@@ -306,9 +273,9 @@ export const TEMPLATES: readonly Template[] = [
     name: 'Angular + Spring Boot',
     tagline: 'Aplicación completa en un mismo dominio',
     description:
-      'El front Angular en S3 + CloudFront y la API Spring Boot en ECS Fargate. CloudFront envía /api/* al backend, así no hay problemas de CORS.',
+      'El front Angular en S3 + CloudFront y la API Spring Boot en EC2 con Auto Scaling. CloudFront envía /api/* al backend, así no hay problemas de CORS.',
     layers: ['frontend', 'backend'],
-    awsServices: ['S3', 'CloudFront', 'ECR', 'ECS Fargate', 'VPC', 'CloudWatch Logs'],
+    awsServices: ['S3', 'CloudFront', 'ECR', 'EC2 Auto Scaling', 'ALB', 'VPC', 'CloudWatch Logs'],
     repoContract: [
       '/frontend con el proyecto Angular y /backend con el proyecto Spring Boot (Maven Wrapper, Java 21).',
       'El front llama a la API con rutas relativas que empiezan por /api.',
@@ -321,7 +288,6 @@ export const TEMPLATES: readonly Template[] = [
       BACK_EXPOSURE,
       BACK_CAPACITY,
       BACK_OBSERVABILITY,
-      BACK_MESSAGING,
       BACK_ENV,
       NOTIFICATIONS,
     ],
@@ -391,9 +357,9 @@ export function validateOptions(template: Template, options: AppOptions): string
         break;
     }
   }
-  if (typeof options['min_tasks'] === 'number' && typeof options['max_tasks'] === 'number') {
-    if (options['min_tasks'] > options['max_tasks']) {
-      errors.push('Contenedores máximos: no puede ser menor que el mínimo.');
+  if (typeof options['min_instances'] === 'number' && typeof options['max_instances'] === 'number') {
+    if (options['min_instances'] > options['max_instances']) {
+      errors.push('Instancias máximas: no puede ser menor que el mínimo.');
     }
   }
   const alarmsEnabled = ALARM_KEYS.some((key) => options[key] === true);

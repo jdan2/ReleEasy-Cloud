@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import {
   App,
+  ConnectGithubRequest,
   CreateAppRequest,
   GithubRepository,
   LoginRequest,
@@ -31,7 +32,7 @@ export const DEMO_CLIENT = { email: 'demo@ferreteria-lopez.es', password: 'demo1
 /** Cuenta AWS (ficticia) de la plataforma en la que confía el rol del cliente. */
 export const PLATFORM_ACCOUNT_ID = '111122223333';
 
-const STORAGE_KEY = 'releasy.mock-state.v2';
+const STORAGE_KEY = 'releasy.mock-state.v3';
 const RELEASE_QUEUE_MS = 2_000;
 const RELEASE_RUN_MS = 12_000;
 const FIRST_PUSH_DELAY_MS = 4_000;
@@ -146,12 +147,13 @@ export class MockBackend {
     return this.tenantView(tenant);
   }
 
-  connectGithub(token: string | null): Tenant {
+  connectGithub(token: string | null, request?: ConnectGithubRequest): Tenant {
     const tenant = this.clientTenant(token);
     tenant.github = {
       status: 'CONNECTED',
       accountLogin: slug(tenant.name),
-      installationId: 40_000_000 + Math.floor(Math.random() * 9_000_000),
+      installationId: request?.installationId ?? 40_000_000 + Math.floor(Math.random() * 9_000_000),
+      authorizedBy: slug(tenant.name),
       connectedAt: nowIso(),
     };
     this.save();
@@ -160,7 +162,7 @@ export class MockBackend {
 
   disconnectGithub(token: string | null): Tenant {
     const tenant = this.clientTenant(token);
-    tenant.github = { status: 'NOT_CONNECTED', accountLogin: null, installationId: null, connectedAt: null };
+    tenant.github = { status: 'NOT_CONNECTED', accountLogin: null, installationId: null, authorizedBy: null, connectedAt: null };
     this.save();
     return this.tenantView(tenant);
   }
@@ -416,7 +418,7 @@ function newTenant(name: string, email: string, createdAt = Date.now()): MockTen
       accountId: null,
       connectedAt: null,
     },
-    github: { status: 'NOT_CONNECTED', accountLogin: null, installationId: null, connectedAt: null },
+    github: { status: 'NOT_CONNECTED', accountLogin: null, installationId: null, authorizedBy: null, connectedAt: null },
   };
 }
 
@@ -455,6 +457,7 @@ function seedState(): MockState {
     status: 'CONNECTED',
     accountLogin: 'ferreteria-lopez',
     installationId: 41_234_567,
+    authorizedBy: 'carmen-lopez',
     connectedAt: iso(now - 5 * day + 2 * 3600_000),
   };
   state.tenants.push(ferreteria);
@@ -473,11 +476,11 @@ function seedState(): MockState {
 
   const shop = seedApp(ferreteria.id, 'tienda', 'angular-springboot', 'ferreteria-lopez/tienda-online', now - 4 * day, {
     front_alarms: true, front_rum: true, waf: true, custom_domain: false, domain_name: '',
-    api_exposure: 'alb', task_size: '0.5-1', min_tasks: 1, max_tasks: 3, cpu_target: 70,
-    log_retention_days: '30', backend_alarms: true, container_insights: false, xray_tracing: true,
-    sqs_queue: true, sqs_visibility_timeout: 60, env_vars: { CATALOGO_PAGINA: '24' },
+    api_exposure: 'alb', instance_type: 't3.small', min_instances: 1, max_instances: 3, cpu_target: 70,
+    log_retention_days: '30', backend_alarms: true, detailed_monitoring: false, xray_tracing: true,
+    env_vars: { CATALOGO_PAGINA: '24' },
     notification_email: 'ops@ferreteria-lopez.es',
-  }, { pageViewsPerMonth: 120_000, pageWeightMb: 1.8, apiRequestsPerMonth: 1_500_000, responseSizeKb: 12, sqsMessagesPerMonth: 50_000 });
+  }, { pageViewsPerMonth: 120_000, pageWeightMb: 1.8, apiRequestsPerMonth: 1_500_000, responseSizeKb: 12 });
   const web = seedApp(ferreteria.id, 'web', 'angular-static', 'ferreteria-lopez/web-corporativa', now - 2 * day, {
     front_alarms: false, front_rum: false, waf: false, custom_domain: true, domain_name: 'www.ferreteria-lopez.es',
     notification_email: '',

@@ -34,10 +34,17 @@ export const AWS_PRICES = {
     perGbLogsIngested: 0.57,
     perGbLogsStoredMonth: 0.03,
     rumPer100kEvents: 1,
+    perCustomMetric: 0.3,
   },
-  fargate: {
-    perVcpuHour: 0.04048,
-    perGbHour: 0.004445,
+  /** Precio por hora de cada tipo de instancia EC2 (Linux, bajo demanda). */
+  ec2PerHour: {
+    't3.micro': 0.0114,
+    't3.small': 0.0228,
+    't3.medium': 0.0456,
+    't3.large': 0.0912,
+  } as Record<string, number>,
+  ebs: {
+    gp3PerGbMonth: 0.088,
   },
   alb: {
     perHour: 0.0252,
@@ -50,14 +57,8 @@ export const AWS_PRICES = {
   apiGateway: {
     perMillionHttpApiRequests: 1.11,
   },
-  cloudMap: {
-    perRegisteredInstance: 0.1,
-  },
   dataTransfer: {
     perGbOutToInternet: 0.09,
-  },
-  sqs: {
-    perMillionRequests: 0.4,
   },
   xray: {
     perMillionTracesRecorded: 5,
@@ -65,8 +66,6 @@ export const AWS_PRICES = {
   ecr: {
     perGbMonth: 0.1,
   },
-  /** Container Insights cobra por métrica; se aproxima con un importe fijo por servicio. */
-  containerInsightsPerService: 3,
 } as const;
 
 /** Cuota mensual simulada de la plataforma por aplicación (lo que cobraría ReleEasy). */

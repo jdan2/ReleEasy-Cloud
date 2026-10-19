@@ -13,10 +13,15 @@ npx ng serve       # http://localhost:4200
 La API debe estar arrancada (ver `backend/docs`). La URL de la API se lee **en tiempo de ejecución** de [`public/config.json`](public/config.json):
 
 ```json
-{ "apiUrl": "http://localhost:8080" }
+{ "apiUrl": "http://localhost:8080", "mockApi": false, "githubAppSlug": null, "githubClientId": null }
 ```
 
+- `githubAppSlug` y `githubClientId`: *slug* y client ID de la GitHub App. Con ellos, "Instalar en GitHub" lleva a GitHub de verdad (instalación y autorización OAuth); con `null`, la instalación se simula. Ver `backend/docs/github-app.md`.
+- Con la API en el perfil `mock-fast` existe el cliente `demo@ferreteria-lopez.es` / `demo1234`. El administrador es el de `backend/.env`.
+
 Para otro entorno basta con sustituir `config.json` en el servidor, sin recompilar.
+
+Si cambias el catálogo de plantillas (`src/app/core/templates/template-catalog.ts`), vuelve a exportarlo para la API con `npm run export:catalog`.
 
 ## Pruebas
 

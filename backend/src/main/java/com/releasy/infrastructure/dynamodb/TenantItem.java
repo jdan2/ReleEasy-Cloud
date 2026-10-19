@@ -1,7 +1,9 @@
 package com.releasy.infrastructure.dynamodb;
 
+import com.releasy.domain.tenant.AwsConnection;
+import com.releasy.domain.tenant.ConnectionStatus;
+import com.releasy.domain.tenant.GithubConnection;
 import com.releasy.domain.tenant.Tenant;
-import com.releasy.domain.tenant.TenantStatus;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
@@ -11,7 +13,8 @@ import java.time.Instant;
  * Elemento de la tabla {@code tenants}.
  *
  * <p>Clave: partición {@code tenantId}, sin clave de ordenación (se accede por ID y el listado es un
- * scan, porque la tabla es pequeña).
+ * scan, porque la tabla es pequeña). Las conexiones AWS y GitHub se guardan como atributos planos con
+ * prefijo {@code aws}/{@code github}.
  */
 @DynamoDbBean
 public class TenantItem {
@@ -20,11 +23,16 @@ public class TenantItem {
     private String name;
     private String slug;
     private String email;
-    private String status;
-    private String accountId;
-    private String roleArn;
-    private String creationRequestId;
-    private String failureReason;
+    private String awsStatus;
+    private String awsExternalId;
+    private String awsRoleArn;
+    private String awsAccountId;
+    private Instant awsConnectedAt;
+    private String githubStatus;
+    private String githubAccountLogin;
+    private Long githubInstallationId;
+    private String githubAuthorizedBy;
+    private Instant githubConnectedAt;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -34,19 +42,27 @@ public class TenantItem {
         item.name = t.name();
         item.slug = t.slug();
         item.email = t.email();
-        item.status = t.status().name();
-        item.accountId = t.accountId();
-        item.roleArn = t.roleArn();
-        item.creationRequestId = t.creationRequestId();
-        item.failureReason = t.failureReason();
+        item.awsStatus = t.aws().status().name();
+        item.awsExternalId = t.aws().externalId();
+        item.awsRoleArn = t.aws().roleArn();
+        item.awsAccountId = t.aws().accountId();
+        item.awsConnectedAt = t.aws().connectedAt();
+        item.githubStatus = t.github().status().name();
+        item.githubAccountLogin = t.github().accountLogin();
+        item.githubInstallationId = t.github().installationId();
+        item.githubAuthorizedBy = t.github().authorizedBy();
+        item.githubConnectedAt = t.github().connectedAt();
         item.createdAt = t.createdAt();
         item.updatedAt = t.updatedAt();
         return item;
     }
 
     public Tenant toDomain() {
-        return new Tenant(tenantId, name, slug, email, TenantStatus.valueOf(status), accountId, roleArn,
-                creationRequestId, failureReason, createdAt, updatedAt);
+        AwsConnection aws = new AwsConnection(ConnectionStatus.valueOf(awsStatus), awsExternalId, awsRoleArn,
+                awsAccountId, awsConnectedAt);
+        GithubConnection github = new GithubConnection(ConnectionStatus.valueOf(githubStatus), githubAccountLogin,
+                githubInstallationId, githubAuthorizedBy, githubConnectedAt);
+        return new Tenant(tenantId, name, slug, email, aws, github, createdAt, updatedAt);
     }
 
     @DynamoDbPartitionKey
@@ -62,20 +78,35 @@ public class TenantItem {
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public String getAwsStatus() { return awsStatus; }
+    public void setAwsStatus(String awsStatus) { this.awsStatus = awsStatus; }
 
-    public String getAccountId() { return accountId; }
-    public void setAccountId(String accountId) { this.accountId = accountId; }
+    public String getAwsExternalId() { return awsExternalId; }
+    public void setAwsExternalId(String awsExternalId) { this.awsExternalId = awsExternalId; }
 
-    public String getRoleArn() { return roleArn; }
-    public void setRoleArn(String roleArn) { this.roleArn = roleArn; }
+    public String getAwsRoleArn() { return awsRoleArn; }
+    public void setAwsRoleArn(String awsRoleArn) { this.awsRoleArn = awsRoleArn; }
 
-    public String getCreationRequestId() { return creationRequestId; }
-    public void setCreationRequestId(String creationRequestId) { this.creationRequestId = creationRequestId; }
+    public String getAwsAccountId() { return awsAccountId; }
+    public void setAwsAccountId(String awsAccountId) { this.awsAccountId = awsAccountId; }
 
-    public String getFailureReason() { return failureReason; }
-    public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
+    public Instant getAwsConnectedAt() { return awsConnectedAt; }
+    public void setAwsConnectedAt(Instant awsConnectedAt) { this.awsConnectedAt = awsConnectedAt; }
+
+    public String getGithubStatus() { return githubStatus; }
+    public void setGithubStatus(String githubStatus) { this.githubStatus = githubStatus; }
+
+    public String getGithubAccountLogin() { return githubAccountLogin; }
+    public void setGithubAccountLogin(String githubAccountLogin) { this.githubAccountLogin = githubAccountLogin; }
+
+    public Long getGithubInstallationId() { return githubInstallationId; }
+    public void setGithubInstallationId(Long githubInstallationId) { this.githubInstallationId = githubInstallationId; }
+
+    public String getGithubAuthorizedBy() { return githubAuthorizedBy; }
+    public void setGithubAuthorizedBy(String githubAuthorizedBy) { this.githubAuthorizedBy = githubAuthorizedBy; }
+
+    public Instant getGithubConnectedAt() { return githubConnectedAt; }
+    public void setGithubConnectedAt(Instant githubConnectedAt) { this.githubConnectedAt = githubConnectedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

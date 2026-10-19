@@ -14,17 +14,34 @@ export interface AppConfig {
    * (ver `core/mock`). Sirve para enseñar el portal sin arrancar el backend.
    */
   readonly mockApi: boolean;
+  /**
+   * Nombre corto (slug) de la GitHub App de ReleEasy, el que aparece en `github.com/apps/<slug>`. Con él,
+   * "Instalar en GitHub" lleva a GitHub de verdad. Si es `null`, la instalación se simula (modo demo o
+   * API con `RELEASY_GITHUB_MODE=mock`).
+   */
+  readonly githubAppSlug: string | null;
+  /** Client ID de la GitHub App: permite autorizar el usuario sin reinstalar la app (D-26). */
+  readonly githubClientId: string | null;
 }
 
 export const APP_CONFIG = new InjectionToken<AppConfig>('APP_CONFIG');
 
 /** Valida y normaliza el contenido de `config.json`. */
 export function parseAppConfig(raw: unknown): AppConfig {
-  const { apiUrl, mockApi } = (raw ?? {}) as { apiUrl?: unknown; mockApi?: unknown };
+  const { apiUrl, mockApi, githubAppSlug, githubClientId } = (raw ?? {}) as Record<string, unknown>;
   if (typeof apiUrl !== 'string' || apiUrl.trim() === '') {
     throw new Error('config.json debe contener "apiUrl" (texto no vacío)');
   }
-  return { apiUrl: apiUrl.trim().replace(/\/+$/, ''), mockApi: mockApi === true };
+  return {
+    apiUrl: apiUrl.trim().replace(/\/+$/, ''),
+    mockApi: mockApi === true,
+    githubAppSlug: optionalText(githubAppSlug),
+    githubClientId: optionalText(githubClientId),
+  };
+}
+
+function optionalText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
 
 /** Descarga `config.json` (sin caché, para que un cambio se note al recargar). */

@@ -3,9 +3,9 @@ package com.releasy.application.webhook;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.releasy.application.port.DeploymentOrchestrator;
 import com.releasy.application.port.DeploymentOrchestrator.DeploymentRequest;
+import com.releasy.application.release.ReleaseLauncher;
 import com.releasy.application.release.ReleaseService;
 import com.releasy.domain.app.App;
-import com.releasy.domain.app.AppPlan;
 import com.releasy.domain.release.Release;
 import com.releasy.domain.release.ReleaseStatus;
 import com.releasy.domain.tenant.Tenant;
@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,14 +41,16 @@ class GithubWebhookServiceTest {
     @BeforeEach
     void setUp() {
         ReleaseService releaseService = new ReleaseService(releases, apps, clock);
-        service = new GithubWebhookService(verifier, new PushEventFilter(), apps, tenants, releases, releaseService,
-                orchestrator, new ObjectMapper(), clock);
+        ReleaseLauncher launcher = new ReleaseLauncher(releases, releaseService, orchestrator, clock);
+        service = new GithubWebhookService(verifier, new PushEventFilter(), apps, tenants, launcher, new ObjectMapper());
 
-        Tenant tenant = Tenant.creating("t-1", "Acme", "acme@example.com", clock.instant())
-                .activate("123456789012", "arn:aws:iam::123456789012:role/OrganizationAccountAccessRole", clock.instant());
+        Tenant registered = Tenant.register("t-1", "Acme", "acme@example.com", "ext-123", clock.instant());
+        Tenant tenant = registered.withAws(registered.aws().connect(
+                "arn:aws:iam::123456789012:role/ReleEasyDeployRole", "123456789012", clock.instant()), clock.instant());
         tenants.save(tenant);
-        apps.save(new App("a-1", "t-1", "tienda", "acme/tienda", "master", AppPlan.BASIC,
-                "https://tienda-acme.apps.releasy.local", clock.instant(), clock.instant()));
+        apps.save(new App("a-1", "t-1", "tienda", "springboot-api", "acme/tienda", "master",
+                Map.of("instance_type", "t3.small"), Map.of(), "https://tienda-acme.apps.releasy.local",
+                clock.instant(), clock.instant()));
     }
 
     @Test
@@ -65,7 +68,10 @@ class GithubWebhookServiceTest {
         DeploymentRequest request = orchestrator.requests.getFirst();
         assertThat(request.releaseId()).isEqualTo(release.id());
         assertThat(request.accountId()).isEqualTo("123456789012");
-        assertThat(request.tenantRoleArn()).endsWith(":role/OrganizationAccountAccessRole");
+        assertThat(request.tenantRoleArn()).endsWith(":role/ReleEasyDeployRole");
+        assertThat(request.externalId()).isEqualTo("ext-123");
+        assertThat(request.templateId()).isEqualTo("springboot-api");
+        assertThat(request.options()).containsEntry("instance_type", "t3.small");
         assertThat(request.commitSha()).isEqualTo(SHA);
     }
 

@@ -108,13 +108,13 @@ Lenguaje: Java 21. Build: Maven 3.10.0 via Maven Wrapper 3.3.4 (./mvnw), obtenid
 
 Spring Boot (parent spring-boot-starter-parent) | 3.5.16 | BACKEND | pom.xml | 2026-10-17 | El enunciado pide Spring Boot 3; 3.5.16 es la ultima 3.x (start.spring.io ya ofrece solo 4.x). Ver backend/docs/decisiones.md.
 spring-boot-starter-web | 3.5.16 | BACKEND | pom.xml | 2026-10-17 | API REST (Spring MVC + Tomcat embebido).
-spring-boot-starter-security | 3.5.16 | BACKEND | pom.xml | 2026-10-17 | Autenticacion basica del administrador.
+spring-boot-starter-security | 3.5.16 | BACKEND | pom.xml | 2026-10-17 | Seguridad de la API (roles ADMIN/CLIENT, BCrypt para las contrasenas).
+spring-boot-starter-oauth2-resource-server | 3.5.16 | BACKEND | pom.xml | 2026-10-19 | Emision y validacion de los JWT de sesion (HS256). Trae spring-security-oauth2-jose 6.5.11 y com.nimbusds:nimbus-jose-jwt 9.37.4. Ver D-24.
 spring-boot-starter-actuator | 3.5.16 | BACKEND | pom.xml | 2026-10-17 | /actuator/health (health check del ALB).
 spring-boot-starter-validation | 3.5.16 | BACKEND | pom.xml | 2026-10-17 | Validacion de peticiones (Jakarta Bean Validation).
 AWS SDK for Java v2 (BOM software.amazon.awssdk:bom) | 2.56.0 | BACKEND | pom.xml | 2026-10-17 | Gestiona las versiones de los modulos siguientes.
-software.amazon.awssdk:organizations | 2.56.0 | BACKEND | pom.xml | 2026-10-17 | CreateAccount / DescribeCreateAccountStatus.
 software.amazon.awssdk:sfn | 2.56.0 | BACKEND | pom.xml | 2026-10-17 | StartExecution de Step Functions.
-software.amazon.awssdk:dynamodb-enhanced | 2.56.0 | BACKEND | pom.xml | 2026-10-17 | Persistencia (tablas tenants, apps, releases).
+software.amazon.awssdk:dynamodb-enhanced | 2.56.0 | BACKEND | pom.xml | 2026-10-17 | Persistencia (tablas users, tenants, apps, releases).
 software.amazon.awssdk:sts | 2.56.0 | BACKEND | pom.xml | 2026-10-17 | Resolucion de credenciales / identidad.
 spring-boot-starter-test | 3.5.16 | BACKEND (test) | pom.xml | 2026-10-17 | JUnit 5, AssertJ, Mockito, MockMvc.
 spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas de endpoints protegidos.
@@ -148,3 +148,7 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
 2026-10-17 | Fase 3: portal con Tailwind CSS 4.3.3 (+ @tailwindcss/postcss, postcss). Retirados @angular/material y @angular/cdk.
 2026-10-17 | Modo demo del portal (mockApi en config.json). Sin dependencias nuevas.
 2026-10-17 | Cambio de alcance (D-18..D-22): vista de cliente, cuenta AWS propia, GitHub App, plantillas configurables y estimador de costes. Sin dependencias nuevas (todo con Angular + Tailwind).
+2026-10-19 | D-23: sin Fargate ni SQS en las plantillas (backend en EC2 + Auto Scaling). Sin dependencias nuevas.
+2026-10-19 | D-24: login con JWT. Anadido spring-boot-starter-oauth2-resource-server 3.5.16; retirado software.amazon.awssdk:organizations (D-18).
+2026-10-19 | D-25: GitHub App real (JDK HttpClient + Nimbus, ya presentes) y script npm export:catalog con el esbuild que trae @angular/build. Sin dependencias nuevas.
+2026-10-19 | D-26: autorizacion OAuth del usuario al conectar GitHub. Sin dependencias nuevas.

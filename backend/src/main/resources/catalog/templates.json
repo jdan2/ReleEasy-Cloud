@@ -1,0 +1,720 @@
+[
+  {
+    "id": "angular-static",
+    "name": "Angular",
+    "tagline": "Web o SPA Angular en una CDN global",
+    "description": "Compila tu proyecto Angular y lo publica en un bucket S3 privado servido por CloudFront, con HTTPS y caché en todo el mundo.",
+    "layers": [
+      "frontend"
+    ],
+    "awsServices": [
+      "S3",
+      "CloudFront"
+    ],
+    "repoContract": [
+      "/frontend con un proyecto Angular (package.json y angular.json).",
+      "Se ejecuta npm ci y ng build; se publica la carpeta dist/<proyecto>/browser."
+    ],
+    "optionGroups": [
+      {
+        "id": "front-observability",
+        "title": "Observabilidad del front",
+        "description": "Saber si tu web funciona y qué experimentan tus usuarios.",
+        "fields": [
+          {
+            "type": "toggle",
+            "key": "front_alarms",
+            "label": "Alarmas de errores 4xx/5xx",
+            "help": "Alarmas de CloudWatch sobre la tasa de errores de CloudFront, con aviso por email.",
+            "default": true
+          },
+          {
+            "type": "toggle",
+            "key": "front_rum",
+            "label": "Monitorización de usuarios reales (RUM)",
+            "help": "CloudWatch RUM mide tiempos de carga y errores JavaScript en los navegadores de tus visitantes.",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "front-security",
+        "title": "Seguridad",
+        "description": "Protección frente a tráfico malicioso.",
+        "fields": [
+          {
+            "type": "toggle",
+            "key": "waf",
+            "label": "Firewall de aplicaciones (AWS WAF)",
+            "help": "Reglas gestionadas de AWS contra ataques comunes (inyecciones, bots) y límite de peticiones por IP.",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "front-domain",
+        "title": "Dominio",
+        "description": "Por defecto la app usa un dominio *.cloudfront.net.",
+        "fields": [
+          {
+            "type": "toggle",
+            "key": "custom_domain",
+            "label": "Dominio propio",
+            "help": "Zona DNS en Route 53 y certificado TLS gratuito de ACM.",
+            "default": false
+          },
+          {
+            "type": "text",
+            "key": "domain_name",
+            "label": "Nombre de dominio",
+            "placeholder": "www.mitienda.es",
+            "pattern": "^([a-z0-9-]+\\.)+[a-z]{2,}$",
+            "patternMessage": "Introduce un dominio válido en minúsculas (p. ej. www.mitienda.es).",
+            "required": true,
+            "default": "",
+            "visibleWhen": {
+              "key": "custom_domain",
+              "equals": true
+            }
+          }
+        ]
+      },
+      {
+        "id": "notifications",
+        "title": "Avisos",
+        "description": "A dónde enviamos las alarmas.",
+        "fields": [
+          {
+            "type": "text",
+            "key": "notification_email",
+            "label": "Email para alarmas",
+            "help": "Obligatorio si activas alguna alarma. Recibirás un email de AWS para confirmar la suscripción.",
+            "placeholder": "ops@miempresa.es",
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "patternMessage": "Introduce un email válido.",
+            "default": ""
+          }
+        ]
+      }
+    ],
+    "usageFields": [
+      {
+        "key": "pageViewsPerMonth",
+        "label": "Visitas al mes",
+        "help": "Páginas vistas en un mes.",
+        "unit": "visitas",
+        "default": 100000,
+        "min": 0,
+        "step": 1000
+      },
+      {
+        "key": "pageWeightMb",
+        "label": "Peso medio de una página",
+        "unit": "MB",
+        "default": 1.5,
+        "min": 0.1,
+        "step": 0.1
+      }
+    ],
+    "usagePresets": [
+      {
+        "id": "low",
+        "label": "Bajo",
+        "description": "Web corporativa o app interna",
+        "values": {
+          "pageViewsPerMonth": 10000
+        }
+      },
+      {
+        "id": "medium",
+        "label": "Medio",
+        "description": "Tienda o servicio con clientes activos",
+        "values": {
+          "pageViewsPerMonth": 100000
+        }
+      },
+      {
+        "id": "high",
+        "label": "Alto",
+        "description": "Producto con mucho tráfico",
+        "values": {
+          "pageViewsPerMonth": 1000000
+        }
+      }
+    ]
+  },
+  {
+    "id": "springboot-api",
+    "name": "Spring Boot",
+    "tagline": "API Java en servidores con autoescalado",
+    "description": "Construye tu backend Spring Boot como imagen Docker y lo ejecuta en instancias EC2 con Auto Scaling detrás de un balanceador. Las instancias se renuevan de forma escalonada y, si las nuevas no pasan el health check, se vuelve a la versión anterior.",
+    "layers": [
+      "backend"
+    ],
+    "awsServices": [
+      "ECR",
+      "EC2 Auto Scaling",
+      "ALB",
+      "VPC",
+      "CloudWatch Logs"
+    ],
+    "repoContract": [
+      "/backend con Maven Wrapper (mvnw) y Java 21; se ejecuta ./mvnw -B verify.",
+      "Dockerfile opcional; si no hay, se usa uno basado en eclipse-temurin:21-jre.",
+      "La app escucha en el puerto 8080 y expone /actuator/health."
+    ],
+    "optionGroups": [
+      {
+        "id": "back-exposure",
+        "title": "Exposición de la API",
+        "description": "Cómo llegan las peticiones a tu backend.",
+        "fields": [
+          {
+            "type": "select",
+            "key": "api_exposure",
+            "label": "Punto de entrada",
+            "help": "API Gateway se coloca delante del balanceador (que pasa a ser interno) y añade límite de peticiones y métricas por ruta.",
+            "default": "alb",
+            "choices": [
+              {
+                "value": "alb",
+                "label": "Balanceador de carga (ALB)"
+              },
+              {
+                "value": "api_gateway",
+                "label": "API Gateway (HTTP API)"
+              }
+            ]
+          },
+          {
+            "type": "number",
+            "key": "api_throttle_rps",
+            "label": "Límite de peticiones por segundo",
+            "unit": "req/s",
+            "default": 100,
+            "min": 1,
+            "max": 10000,
+            "visibleWhen": {
+              "key": "api_exposure",
+              "equals": "api_gateway"
+            }
+          }
+        ]
+      },
+      {
+        "id": "back-capacity",
+        "title": "Capacidad",
+        "description": "Tipo y número de servidores (instancias EC2) que ejecutan tu backend.",
+        "fields": [
+          {
+            "type": "select",
+            "key": "instance_type",
+            "label": "Tipo de instancia",
+            "help": "Cada instancia ejecuta la imagen Docker de tu backend.",
+            "default": "t3.small",
+            "choices": [
+              {
+                "value": "t3.micro",
+                "label": "t3.micro · 2 vCPU · 1 GB (pruebas)"
+              },
+              {
+                "value": "t3.small",
+                "label": "t3.small · 2 vCPU · 2 GB (recomendado)"
+              },
+              {
+                "value": "t3.medium",
+                "label": "t3.medium · 2 vCPU · 4 GB"
+              },
+              {
+                "value": "t3.large",
+                "label": "t3.large · 2 vCPU · 8 GB"
+              }
+            ]
+          },
+          {
+            "type": "number",
+            "key": "min_instances",
+            "label": "Instancias mínimas",
+            "default": 1,
+            "min": 1,
+            "max": 10
+          },
+          {
+            "type": "number",
+            "key": "max_instances",
+            "label": "Instancias máximas",
+            "help": "Si es mayor que el mínimo, se activa el autoescalado por uso de CPU.",
+            "default": 2,
+            "min": 1,
+            "max": 20
+          },
+          {
+            "type": "number",
+            "key": "cpu_target",
+            "label": "CPU objetivo del autoescalado",
+            "unit": "%",
+            "default": 70,
+            "min": 20,
+            "max": 90
+          }
+        ]
+      },
+      {
+        "id": "back-observability",
+        "title": "Observabilidad del backend",
+        "description": "Logs, métricas, trazas y alarmas.",
+        "fields": [
+          {
+            "type": "select",
+            "key": "log_retention_days",
+            "label": "Retención de logs",
+            "default": "14",
+            "choices": [
+              {
+                "value": "7",
+                "label": "7 días"
+              },
+              {
+                "value": "14",
+                "label": "14 días"
+              },
+              {
+                "value": "30",
+                "label": "30 días"
+              },
+              {
+                "value": "90",
+                "label": "90 días"
+              }
+            ]
+          },
+          {
+            "type": "toggle",
+            "key": "backend_alarms",
+            "label": "Alarmas de CPU, memoria, errores 5xx y latencia",
+            "help": "Te avisan por email cuando algo va mal.",
+            "default": true
+          },
+          {
+            "type": "toggle",
+            "key": "detailed_monitoring",
+            "label": "Métricas de EC2 cada minuto (monitorización detallada)",
+            "help": "Por defecto CloudWatch recoge las métricas de las instancias cada 5 minutos.",
+            "default": false
+          },
+          {
+            "type": "toggle",
+            "key": "xray_tracing",
+            "label": "Trazas distribuidas (AWS X-Ray)",
+            "help": "Sigue cada petición a través de tu código. Se muestrea el 5 % de las peticiones.",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "back-env",
+        "title": "Variables de entorno",
+        "description": "Configuración no sensible de tu backend. Los secretos irán a Secrets Manager (próximamente).",
+        "fields": [
+          {
+            "type": "keyvalue",
+            "key": "env_vars",
+            "label": "Variables",
+            "default": {}
+          }
+        ]
+      },
+      {
+        "id": "notifications",
+        "title": "Avisos",
+        "description": "A dónde enviamos las alarmas.",
+        "fields": [
+          {
+            "type": "text",
+            "key": "notification_email",
+            "label": "Email para alarmas",
+            "help": "Obligatorio si activas alguna alarma. Recibirás un email de AWS para confirmar la suscripción.",
+            "placeholder": "ops@miempresa.es",
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "patternMessage": "Introduce un email válido.",
+            "default": ""
+          }
+        ]
+      }
+    ],
+    "usageFields": [
+      {
+        "key": "apiRequestsPerMonth",
+        "label": "Peticiones a la API al mes",
+        "unit": "peticiones",
+        "default": 1000000,
+        "min": 0,
+        "step": 10000
+      },
+      {
+        "key": "responseSizeKb",
+        "label": "Tamaño medio de respuesta",
+        "unit": "KB",
+        "default": 10,
+        "min": 1,
+        "step": 1
+      }
+    ],
+    "usagePresets": [
+      {
+        "id": "low",
+        "label": "Bajo",
+        "description": "Web corporativa o app interna",
+        "values": {
+          "apiRequestsPerMonth": 100000
+        }
+      },
+      {
+        "id": "medium",
+        "label": "Medio",
+        "description": "Tienda o servicio con clientes activos",
+        "values": {
+          "apiRequestsPerMonth": 1000000
+        }
+      },
+      {
+        "id": "high",
+        "label": "Alto",
+        "description": "Producto con mucho tráfico",
+        "values": {
+          "apiRequestsPerMonth": 10000000
+        }
+      }
+    ]
+  },
+  {
+    "id": "angular-springboot",
+    "name": "Angular + Spring Boot",
+    "tagline": "Aplicación completa en un mismo dominio",
+    "description": "El front Angular en S3 + CloudFront y la API Spring Boot en EC2 con Auto Scaling. CloudFront envía /api/* al backend, así no hay problemas de CORS.",
+    "layers": [
+      "frontend",
+      "backend"
+    ],
+    "awsServices": [
+      "S3",
+      "CloudFront",
+      "ECR",
+      "EC2 Auto Scaling",
+      "ALB",
+      "VPC",
+      "CloudWatch Logs"
+    ],
+    "repoContract": [
+      "/frontend con el proyecto Angular y /backend con el proyecto Spring Boot (Maven Wrapper, Java 21).",
+      "El front llama a la API con rutas relativas que empiezan por /api.",
+      "El backend escucha en el puerto 8080 y expone /actuator/health."
+    ],
+    "optionGroups": [
+      {
+        "id": "front-observability",
+        "title": "Observabilidad del front",
+        "description": "Saber si tu web funciona y qué experimentan tus usuarios.",
+        "fields": [
+          {
+            "type": "toggle",
+            "key": "front_alarms",
+            "label": "Alarmas de errores 4xx/5xx",
+            "help": "Alarmas de CloudWatch sobre la tasa de errores de CloudFront, con aviso por email.",
+            "default": true
+          },
+          {
+            "type": "toggle",
+            "key": "front_rum",
+            "label": "Monitorización de usuarios reales (RUM)",
+            "help": "CloudWatch RUM mide tiempos de carga y errores JavaScript en los navegadores de tus visitantes.",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "front-security",
+        "title": "Seguridad",
+        "description": "Protección frente a tráfico malicioso.",
+        "fields": [
+          {
+            "type": "toggle",
+            "key": "waf",
+            "label": "Firewall de aplicaciones (AWS WAF)",
+            "help": "Reglas gestionadas de AWS contra ataques comunes (inyecciones, bots) y límite de peticiones por IP.",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "front-domain",
+        "title": "Dominio",
+        "description": "Por defecto la app usa un dominio *.cloudfront.net.",
+        "fields": [
+          {
+            "type": "toggle",
+            "key": "custom_domain",
+            "label": "Dominio propio",
+            "help": "Zona DNS en Route 53 y certificado TLS gratuito de ACM.",
+            "default": false
+          },
+          {
+            "type": "text",
+            "key": "domain_name",
+            "label": "Nombre de dominio",
+            "placeholder": "www.mitienda.es",
+            "pattern": "^([a-z0-9-]+\\.)+[a-z]{2,}$",
+            "patternMessage": "Introduce un dominio válido en minúsculas (p. ej. www.mitienda.es).",
+            "required": true,
+            "default": "",
+            "visibleWhen": {
+              "key": "custom_domain",
+              "equals": true
+            }
+          }
+        ]
+      },
+      {
+        "id": "back-exposure",
+        "title": "Exposición de la API",
+        "description": "Cómo llegan las peticiones a tu backend.",
+        "fields": [
+          {
+            "type": "select",
+            "key": "api_exposure",
+            "label": "Punto de entrada",
+            "help": "API Gateway se coloca delante del balanceador (que pasa a ser interno) y añade límite de peticiones y métricas por ruta.",
+            "default": "alb",
+            "choices": [
+              {
+                "value": "alb",
+                "label": "Balanceador de carga (ALB)"
+              },
+              {
+                "value": "api_gateway",
+                "label": "API Gateway (HTTP API)"
+              }
+            ]
+          },
+          {
+            "type": "number",
+            "key": "api_throttle_rps",
+            "label": "Límite de peticiones por segundo",
+            "unit": "req/s",
+            "default": 100,
+            "min": 1,
+            "max": 10000,
+            "visibleWhen": {
+              "key": "api_exposure",
+              "equals": "api_gateway"
+            }
+          }
+        ]
+      },
+      {
+        "id": "back-capacity",
+        "title": "Capacidad",
+        "description": "Tipo y número de servidores (instancias EC2) que ejecutan tu backend.",
+        "fields": [
+          {
+            "type": "select",
+            "key": "instance_type",
+            "label": "Tipo de instancia",
+            "help": "Cada instancia ejecuta la imagen Docker de tu backend.",
+            "default": "t3.small",
+            "choices": [
+              {
+                "value": "t3.micro",
+                "label": "t3.micro · 2 vCPU · 1 GB (pruebas)"
+              },
+              {
+                "value": "t3.small",
+                "label": "t3.small · 2 vCPU · 2 GB (recomendado)"
+              },
+              {
+                "value": "t3.medium",
+                "label": "t3.medium · 2 vCPU · 4 GB"
+              },
+              {
+                "value": "t3.large",
+                "label": "t3.large · 2 vCPU · 8 GB"
+              }
+            ]
+          },
+          {
+            "type": "number",
+            "key": "min_instances",
+            "label": "Instancias mínimas",
+            "default": 1,
+            "min": 1,
+            "max": 10
+          },
+          {
+            "type": "number",
+            "key": "max_instances",
+            "label": "Instancias máximas",
+            "help": "Si es mayor que el mínimo, se activa el autoescalado por uso de CPU.",
+            "default": 2,
+            "min": 1,
+            "max": 20
+          },
+          {
+            "type": "number",
+            "key": "cpu_target",
+            "label": "CPU objetivo del autoescalado",
+            "unit": "%",
+            "default": 70,
+            "min": 20,
+            "max": 90
+          }
+        ]
+      },
+      {
+        "id": "back-observability",
+        "title": "Observabilidad del backend",
+        "description": "Logs, métricas, trazas y alarmas.",
+        "fields": [
+          {
+            "type": "select",
+            "key": "log_retention_days",
+            "label": "Retención de logs",
+            "default": "14",
+            "choices": [
+              {
+                "value": "7",
+                "label": "7 días"
+              },
+              {
+                "value": "14",
+                "label": "14 días"
+              },
+              {
+                "value": "30",
+                "label": "30 días"
+              },
+              {
+                "value": "90",
+                "label": "90 días"
+              }
+            ]
+          },
+          {
+            "type": "toggle",
+            "key": "backend_alarms",
+            "label": "Alarmas de CPU, memoria, errores 5xx y latencia",
+            "help": "Te avisan por email cuando algo va mal.",
+            "default": true
+          },
+          {
+            "type": "toggle",
+            "key": "detailed_monitoring",
+            "label": "Métricas de EC2 cada minuto (monitorización detallada)",
+            "help": "Por defecto CloudWatch recoge las métricas de las instancias cada 5 minutos.",
+            "default": false
+          },
+          {
+            "type": "toggle",
+            "key": "xray_tracing",
+            "label": "Trazas distribuidas (AWS X-Ray)",
+            "help": "Sigue cada petición a través de tu código. Se muestrea el 5 % de las peticiones.",
+            "default": false
+          }
+        ]
+      },
+      {
+        "id": "back-env",
+        "title": "Variables de entorno",
+        "description": "Configuración no sensible de tu backend. Los secretos irán a Secrets Manager (próximamente).",
+        "fields": [
+          {
+            "type": "keyvalue",
+            "key": "env_vars",
+            "label": "Variables",
+            "default": {}
+          }
+        ]
+      },
+      {
+        "id": "notifications",
+        "title": "Avisos",
+        "description": "A dónde enviamos las alarmas.",
+        "fields": [
+          {
+            "type": "text",
+            "key": "notification_email",
+            "label": "Email para alarmas",
+            "help": "Obligatorio si activas alguna alarma. Recibirás un email de AWS para confirmar la suscripción.",
+            "placeholder": "ops@miempresa.es",
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+            "patternMessage": "Introduce un email válido.",
+            "default": ""
+          }
+        ]
+      }
+    ],
+    "usageFields": [
+      {
+        "key": "pageViewsPerMonth",
+        "label": "Visitas al mes",
+        "help": "Páginas vistas en un mes.",
+        "unit": "visitas",
+        "default": 100000,
+        "min": 0,
+        "step": 1000
+      },
+      {
+        "key": "pageWeightMb",
+        "label": "Peso medio de una página",
+        "unit": "MB",
+        "default": 1.5,
+        "min": 0.1,
+        "step": 0.1
+      },
+      {
+        "key": "apiRequestsPerMonth",
+        "label": "Peticiones a la API al mes",
+        "unit": "peticiones",
+        "default": 1000000,
+        "min": 0,
+        "step": 10000
+      },
+      {
+        "key": "responseSizeKb",
+        "label": "Tamaño medio de respuesta",
+        "unit": "KB",
+        "default": 10,
+        "min": 1,
+        "step": 1
+      }
+    ],
+    "usagePresets": [
+      {
+        "id": "low",
+        "label": "Bajo",
+        "description": "Web corporativa o app interna",
+        "values": {
+          "pageViewsPerMonth": 10000,
+          "apiRequestsPerMonth": 100000
+        }
+      },
+      {
+        "id": "medium",
+        "label": "Medio",
+        "description": "Tienda o servicio con clientes activos",
+        "values": {
+          "pageViewsPerMonth": 100000,
+          "apiRequestsPerMonth": 1000000
+        }
+      },
+      {
+        "id": "high",
+        "label": "Alto",
+        "description": "Producto con mucho tráfico",
+        "values": {
+          "pageViewsPerMonth": 1000000,
+          "apiRequestsPerMonth": 10000000
+        }
+      }
+    ]
+  }
+]

@@ -5,7 +5,15 @@ describe('parseAppConfig', () => {
     expect(parseAppConfig({ apiUrl: ' http://localhost:8080/ ' })).toEqual({
       apiUrl: 'http://localhost:8080',
       mockApi: false,
+      githubAppSlug: null,
+      githubClientId: null,
     });
+  });
+
+  it('lee el slug de la GitHub App si viene informado', () => {
+    expect(parseAppConfig({ apiUrl: 'http://x', githubAppSlug: ' releasy-cloud ' }).githubAppSlug).toBe('releasy-cloud');
+    expect(parseAppConfig({ apiUrl: 'http://x', githubAppSlug: '' }).githubAppSlug).toBeNull();
+    expect(parseAppConfig({ apiUrl: 'http://x', githubClientId: 'Iv23li' }).githubClientId).toBe('Iv23li');
   });
 
   it('activa el modo demo solo con mockApi: true', () => {

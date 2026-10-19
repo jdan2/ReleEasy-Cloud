@@ -156,3 +156,107 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
   - variables de entorno.
 - **Fase 4:** cada opción se traducirá en una variable de Terraform del módulo de la plantilla (por ejemplo `enable_sqs`).
 - **Primer despliegue:** al crear la app se despliega el último commit de la rama (en el modo demo, a los pocos segundos); después, cada merge.
+
+## D-23 · Sin ECS Fargate ni SQS: el backend corre en EC2 con Auto Scaling
+
+- **Fecha:** 2026-10-19.
+- **Decisión:**
+  - se elimina la opción de **cola SQS** (y el campo de uso "mensajes SQS");
+  - el backend Spring Boot deja de usar **ECS Fargate** y pasa a un **Auto Scaling Group de EC2** (tipos `t3.micro` a `t3.large`) en subredes privadas, detrás de un **ALB**. Cada instancia ejecuta con Docker la imagen del backend guardada en ECR.
+- **Alternativas descartadas:**
+  - App Runner, porque no admite clientes nuevos desde el 30 de abril de 2026;
+  - ECS Express Mode, porque también usa Fargate;
+  - Lambda + SnapStart, porque obliga a cambiar el código del cliente;
+  - Elastic Beanstalk, porque da menos control.
+- **Consecuencias:**
+  - El ALB existe siempre. Con API Gateway pasa a ser interno y API Gateway (HTTP API + VPC Link) se coloca delante, así que **ya no ahorra el coste del ALB** y desaparece Cloud Map.
+  - Los despliegues usan *instance refresh* del ASG, con health check del ALB en `/actuator/health` y vuelta atrás automática (sustituye al *circuit breaker* de ECS).
+  - Container Insights se sustituye por la **monitorización detallada de EC2** (métricas cada minuto).
+  - Opciones renombradas: `task_size` pasa a ser `instance_type`, y `min_tasks`/`max_tasks` pasan a ser `min_instances`/`max_instances`. Los datos de demostración pasan a `releasy.mock-state.v3`.
+- **Sobre la "Transferencia de datos":** solo aparece en la plantilla Spring Boot sin front. Es lo que cobra AWS por los GB que salen hacia internet (las respuestas de la API, a ~0,09 USD/GB); el tráfico de entrada es gratis. En Angular + Spring Boot las respuestas salen por CloudFront, que cobra su propia tarifa por GB, y el tramo del ALB a CloudFront no tiene coste.
+
+## D-24 · Registro, login con JWT y tenant con conexiones AWS y GitHub
+
+- **Fecha:** 2026-10-19.
+- **Decisión:** primera pieza del backend con el nuevo alcance.
+  - **Usuarios:** `User{id,email,name,role,tenantId,passwordHash}` con contraseña en **BCrypt**.
+    - Se guardan en memoria en modo mock y en la tabla DynamoDB **`releasy-users`** en modo real. Su clave es el email normalizado, así que el login es un `GetItem` y la unicidad la garantiza una escritura condicional (`attribute_not_exists`), sin índices secundarios.
+    - El **administrador no se guarda**: sus credenciales salen de `RELEASY_ADMIN_USER`/`RELEASY_ADMIN_PASSWORD`.
+  - **Sesión:**
+    - JWT firmado con **HMAC-SHA256** (`RELEASY_JWT_SECRET`, de al menos 32 caracteres) y válido 12 h (`RELEASY_TOKEN_TTL`).
+    - Lleva los claims `sub`, `email`, `name`, `role` y `tenantId`.
+    - Se usa `spring-boot-starter-oauth2-resource-server` (Nimbus) para emitirlo y validarlo. No hay refresco de token: al caducar, se vuelve a iniciar sesión.
+  - **Rutas:**
+    - `POST /api/auth/register` (201) y `POST /api/auth/login` (200) devuelven `Session{token,user}`.
+    - `GET /api/me/tenant` (rol `CLIENT`; el cliente sale del token, nunca de la URL).
+    - `/api/tenants/**` es solo para `ADMIN`. Se elimina el alta de clientes por el administrador.
+  - **Tenant:** pasa a tener `aws{status,externalId,roleArn,accountId,connectedAt}` y `github{status,accountLogin,installationId,connectedAt}`.
+    - El External ID es un UUID que se genera al registrarse.
+    - `platformAccountId` sale de la configuración (`RELEASY_PLATFORM_ACCOUNT_ID`).
+    - Desaparecen `TenantStatus`, `AccountProvisioner`, `AccountCreationPoller` y la dependencia de Organizations.
+  - Registrar apps y desplegar exige ahora la **cuenta AWS conectada**. `DeploymentRequest` incluye el `externalId`.
+- **Pendiente:**
+  - conexión AWS (`AwsConnectionVerifier` con `sts:AssumeRole`) y GitHub (`GithubGateway`);
+  - apps con plantillas en `/api/me/apps`;
+  - autorización por propietario en `/api/apps/{id}`;
+  - recuperación de contraseña.
+
+## D-25 · Login y GitHub reales; AWS y despliegues simulados en la API
+
+- **Fecha:** 2026-10-19.
+- **Decisión:** el portal pasa a usar la API (`mockApi: false`) y la simulación se hace **en el backend**, no en el navegador.
+  - **Reales:** registro, login, la conexión con GitHub (`RELEASY_GITHUB_MODE=real`) y el catálogo de plantillas con su validación.
+  - **Simulados** (`RELEASY_AWS_MODE=mock`): la verificación STS de la cuenta AWS (un ARN con `fail` se rechaza) y los despliegues. El orquestador simulado lleva cada release de `PENDING` a `SUCCEEDED`.
+  - El modo de GitHub (`releasy.github.mode`) es **independiente** del de AWS.
+- **GitHub App:**
+  - **Flujo:**
+    1. El portal lleva a `github.com/apps/<slug>/installations/new`.
+    2. GitHub vuelve a la *Setup URL* (`/portal/github/callback?installation_id=…`).
+    3. El portal envía `POST /api/me/github-connection {installationId}`.
+    4. La API comprueba la instalación (`GET /app/installations/{id}`, con el JWT de la app) y guarda la cuenta.
+  - **Cliente:** `GithubAppClient`, con el `HttpClient` del JDK.
+    - El JWT de la app se firma con RS256 (Nimbus) y vale 9 minutos.
+    - Los tokens de instalación (1 h) se guardan en memoria y se renuevan 5 minutos antes de caducar.
+    - La clave `.pem` se lee tal como la entrega GitHub (PKCS#1); se convierte a PKCS#8 en código.
+  - **Límites:**
+    - Se lee una sola página: hasta 100 repositorios y 100 ramas por repositorio.
+    - **Limitación de seguridad conocida:** no se comprueba que quien envía el `installation_id` sea quien instaló la app; solo se impide que dos clientes compartan una instalación. Para cerrarlo hay que activar la autorización OAuth durante la instalación y comprobar la instalación con `GET /user/installations`, usando el token del usuario.
+  - **Webhook:** desactivado en desarrollo, porque necesita una URL pública. El de push ya existe (`/api/webhooks/github`).
+- **Catálogo compartido:**
+  - La fuente sigue siendo `template-catalog.ts`. `npm run export:catalog` lo exporta a `backend/src/main/resources/catalog/templates.json`, usando el `esbuild` que ya trae `@angular/build`.
+  - La API lo sirve tal cual (`GET /api/templates`). `TemplateCatalog` replica `validateOptions` con los mismos mensajes y descarta las opciones que la plantilla no declara.
+  - **Hay que volver a exportarlo cada vez que cambie el catálogo.**
+- **Apps:**
+  - `App{templateId,options,usage}` sustituye a `plan`; en DynamoDB, las opciones y el uso se guardan como JSON.
+  - `POST /api/me/apps` comprueba:
+    - que las conexiones AWS y GitHub existen;
+    - que la plantilla existe y sus opciones son válidas;
+    - que el repositorio y la rama están en la instalación.
+  - Después lanza el despliegue del **último commit de la rama** con `ReleaseLauncher`, el mismo que usa el webhook.
+  - `/api/apps/{id}` responde 404 a quien no es el propietario ni el administrador.
+  - `DeploymentRequest` lleva `templateId` y `options`.
+- **Otros cambios:**
+  - Los ID de release llevan milisegundos (`r-yyyyMMddHHmmssSSS-…`). Antes, dos releases creados en el mismo segundo se ordenaban al azar.
+  - El perfil `mock-fast` crea el cliente `demo@ferreteria-lopez.es` / `demo1234` al arrancar.
+
+## D-26 · Autorización OAuth del usuario al conectar GitHub
+
+- **Fecha:** 2026-10-19.
+- **Contexto:** en D-25 la API aceptaba cualquier `installation_id` (limitación conocida). Además, el usuario quiere que el cliente vea en su GitHub que ha autorizado a ReleEasy.
+- **Decisión:** la GitHub App se configura con *Request user authorization (OAuth) during installation*.
+  - **Vuelta al portal:** al instalar, el cliente también autoriza a ReleEasy con su usuario, y GitHub vuelve a la *Callback URL* (`/portal/github/callback`) con `code`, `installation_id` y `state`.
+  - **Comprobación en la API** (`POST /api/me/github-connection {code, installationId?}`):
+    1. canjea el `code` (client ID y client secret) por un token del usuario;
+    2. con ese token consulta `/user` y `/user/installations`;
+    3. **solo acepta una instalación accesible para ese usuario**;
+    4. guarda `github.authorizedBy` (quién autorizó).
+    - El token del usuario **no se guarda**.
+  - Una instalación sigue sin poder pertenecer a dos clientes.
+  - **CSRF:** el portal genera un `state` aleatorio (en `sessionStorage`) antes de ir a GitHub, y la página de vuelta lo exige.
+  - **App ya instalada:** el cliente puede solo autorizar (`/login/oauth/authorize?client_id=…`). Entonces llega sin `installation_id` y se usa la primera instalación del usuario.
+  - **Visibilidad para el cliente:** aparece en GitHub en *Settings → Applications*, tanto en "Installed GitHub Apps" como en "Authorized GitHub Apps".
+- **Configuración nueva:**
+  - API: `RELEASY_GITHUB_CLIENT_ID` y `RELEASY_GITHUB_CLIENT_SECRET` (el secret es secreto: `.env` o Secrets Manager).
+  - Portal: `githubClientId` en `config.json` (es público).
+- **Mock:** cualquier código vale. El usuario es `usuario-demo` y el ID de instalación se calcula a partir del código.
+- **Resuelve** la limitación de seguridad de D-25.

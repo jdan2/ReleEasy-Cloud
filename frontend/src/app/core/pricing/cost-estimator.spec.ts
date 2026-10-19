@@ -44,45 +44,52 @@ describe('estimateMonthlyCost', () => {
     expect(e.totalMonthlyUsd).toBeCloseTo(e.awsMonthlyUsd + PLATFORM_FEE_PER_APP_USD, 2);
   });
 
-  it('Spring Boot: Fargate depende del tamaño y número de contenedores', () => {
-    const small = estimate(spring, { task_size: '0.25-0.5', min_tasks: 1, max_tasks: 1 }, {});
-    const big = estimate(spring, { task_size: '1-2', min_tasks: 2, max_tasks: 2 }, {});
-    const fargate = (e: CostEstimate): number => e.lines.find((l) => l.service === 'ECS Fargate')!.monthlyUsd;
+  it('Spring Boot: EC2 depende del tipo y número de instancias', () => {
+    const small = estimate(spring, { instance_type: 't3.small', min_instances: 1, max_instances: 1 }, {});
+    const big = estimate(spring, { instance_type: 't3.large', min_instances: 2, max_instances: 2 }, {});
+    const ec2 = (e: CostEstimate): number => e.lines.find((l) => l.service === 'EC2 Auto Scaling')!.monthlyUsd;
 
-    const expected = (0.25 * AWS_PRICES.fargate.perVcpuHour + 0.5 * AWS_PRICES.fargate.perGbHour) * HOURS_PER_MONTH;
-    expect(fargate(small)).toBeCloseTo(expected, 2);
-    expect(fargate(big)).toBeCloseTo(fargate(small) * 8, 1);
+    const disk = 20 * AWS_PRICES.ebs.gp3PerGbMonth;
+    expect(ec2(small)).toBeCloseTo(AWS_PRICES.ec2PerHour['t3.small'] * HOURS_PER_MONTH + disk, 1);
+    expect(ec2(big)).toBeCloseTo(2 * (AWS_PRICES.ec2PerHour['t3.large'] * HOURS_PER_MONTH + disk), 1);
+    expect(services(small)).not.toContain('ECS Fargate');
   });
 
   it('con autoescalado informa del coste si escala al máximo', () => {
-    const e = estimate(spring, { min_tasks: 1, max_tasks: 3 }, {});
+    const e = estimate(spring, { min_instances: 1, max_instances: 3 }, {});
     expect(e.awsMaxMonthlyUsd).toBeGreaterThan(e.awsMonthlyUsd);
 
-    const fixed = estimate(spring, { min_tasks: 2, max_tasks: 2 }, {});
+    const fixed = estimate(spring, { min_instances: 2, max_instances: 2 }, {});
     expect(fixed.awsMaxMonthlyUsd).toBe(fixed.awsMonthlyUsd);
   });
 
-  it('API Gateway sustituye al balanceador y cobra por petición', () => {
+  it('API Gateway se suma al balanceador interno y cobra por petición', () => {
     const alb = estimate(spring, { api_exposure: 'alb' }, { apiRequestsPerMonth: 1_000_000 });
     const gateway = estimate(spring, { api_exposure: 'api_gateway' }, { apiRequestsPerMonth: 1_000_000 });
 
     expect(services(alb)).toContain('Application Load Balancer');
-    expect(services(gateway)).not.toContain('Application Load Balancer');
-    expect(services(gateway)).toContain('API Gateway');
-    expect(gateway.awsMonthlyUsd).toBeLessThan(alb.awsMonthlyUsd);
+    expect(services(alb)).not.toContain('API Gateway');
+    expect(services(gateway)).toEqual(expect.arrayContaining(['Application Load Balancer', 'API Gateway']));
+    expect(gateway.awsMonthlyUsd).toBeCloseTo(alb.awsMonthlyUsd + AWS_PRICES.apiGateway.perMillionHttpApiRequests, 1);
   });
 
-  it('SQS y X-Ray escalan con el uso', () => {
-    const e = estimate(spring, { sqs_queue: true, xray_tracing: true }, { apiRequestsPerMonth: 2_000_000, sqsMessagesPerMonth: 1_000_000 });
+  it('X-Ray escala con el uso y la monitorización detallada con las instancias', () => {
+    const e = estimate(spring, { xray_tracing: true, detailed_monitoring: true, min_instances: 2, max_instances: 2 }, { apiRequestsPerMonth: 2_000_000 });
 
-    expect(e.lines.find((l) => l.service === 'Amazon SQS')!.monthlyUsd).toBeCloseTo(3 * AWS_PRICES.sqs.perMillionRequests, 2);
     expect(e.lines.find((l) => l.service === 'AWS X-Ray')!.monthlyUsd).toBeCloseTo(0.1 * AWS_PRICES.xray.perMillionTracesRecorded, 2);
+    expect(e.lines.find((l) => l.service === 'Monitorización detallada')!.monthlyUsd).toBeCloseTo(2 * 7 * AWS_PRICES.cloudWatch.perCustomMetric, 2);
+  });
+
+  it('Spring Boot sin CloudFront cobra la transferencia de datos hacia internet', () => {
+    const e = estimate(spring, {}, { apiRequestsPerMonth: 1_048_576, responseSizeKb: 10 });
+    // 1.048.576 respuestas × 10 KB = 10 GB
+    expect(e.lines.find((l) => l.service === 'Transferencia de datos')!.monthlyUsd).toBeCloseTo(10 * AWS_PRICES.dataTransfer.perGbOutToInternet, 2);
   });
 
   it('Angular + Spring Boot sirve la API a través de CloudFront', () => {
     const e = estimate(fullstack, {}, { pageViewsPerMonth: 10_000, pageWeightMb: 1, apiRequestsPerMonth: 100_000, responseSizeKb: 10 });
 
-    expect(services(e)).toEqual(expect.arrayContaining(['CloudFront', 'S3', 'ECS Fargate', 'CloudFront (/api/*)']));
+    expect(services(e)).toEqual(expect.arrayContaining(['CloudFront', 'S3', 'EC2 Auto Scaling', 'CloudFront (/api/*)']));
     expect(services(e)).not.toContain('Transferencia de datos');
   });
 });

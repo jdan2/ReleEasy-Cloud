@@ -2,27 +2,53 @@
 
 Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen aplicaciones **en su propia cuenta de AWS** sin gestionar infraestructura. **Se prioriza código claro, organizado y documentado por encima de funcionalidades extra.** La documentación y los comentarios se escriben en español.
 
-## Alcance actual (tras el cambio de alcance del 2026-10-17, D-18 a D-22)
+## Alcance actual (cambios de alcance del 2026-10-17 y 2026-10-19, D-18 a D-26)
 
 1. El **cliente se registra** en el portal (empresa, email y contraseña) e inicia sesión. Hay dos roles: `CLIENT` y `ADMIN`.
 2. **Conecta su cuenta de AWS:** el portal le da un External ID y un enlace *Quick-create* de CloudFormation que crea el rol `ReleEasyDeployRole` (confía en la cuenta de la plataforma y exige el External ID). Después pega el ARN del rol y la plataforma lo verifica con `sts:AssumeRole`. **Ya no se usa AWS Organizations ni `CreateAccount`** (D-18).
-3. **Conecta GitHub** instalando la GitHub App de ReleEasy, que da acceso a los repos elegidos y configura el webhook de push.
-4. **Elige una plantilla** del catálogo: Angular, Spring Boot o Angular + Spring Boot. Rellena su **formulario de componentes opcionales** (observabilidad, WAF, dominio, API Gateway, SQS, autoescalado, variables de entorno…), le **asigna un repositorio y una rama**, e indica su **uso estimado**. Mientras tanto ve el **coste mensual estimado**, separado en AWS y cuota de ReleEasy (D-20, D-22).
+3. **Conecta GitHub** instalando la GitHub App de ReleEasy y **autorizándola con su usuario (OAuth)**. Así da acceso de solo lectura a los repos que elige y la app recibe los push. El cliente no crea nada: solo instala y autoriza, y ve ReleEasy en su GitHub, en *Settings → Applications* (D-25, D-26).
+4. **Elige una plantilla** del catálogo: Angular, Spring Boot o Angular + Spring Boot. Rellena su **formulario de componentes opcionales** (observabilidad, WAF, dominio, API Gateway, autoescalado de EC2, variables de entorno…), le **asigna un repositorio y una rama**, e indica su **uso estimado**. Mientras tanto ve el **coste mensual estimado**, separado en AWS y cuota de ReleEasy (D-20, D-22).
 5. Al crear la app se despliega el último commit, y después cada **merge a la rama**: el webhook dispara Step Functions + CodeBuild + Terraform en la cuenta del cliente.
 6. El cliente ve sus apps, su URL, sus componentes, su coste y sus releases (`PENDING`, `RUNNING`, `SUCCEEDED` o `FAILED`). El **administrador** ve a todos los clientes, sus conexiones y sus apps, en solo lectura.
 7. **Base de datos:** fuera de alcance por ahora (D-19).
+8. **Sin ECS Fargate ni SQS** (D-23): el backend Spring Boot corre en EC2 con Auto Scaling detrás de un ALB.
 
-## Estado (actualizado 2026-10-17)
+## Estado (actualizado 2026-10-19)
 
 | Pieza | Estado |
 |---|---|
 | 1. Estructura y dependencias | ✅ |
-| 2. Backend | 🟠 **Hecho para el alcance ORIGINAL** (admin + Organizations, 43 pruebas). **Hay que adaptarlo al nuevo alcance**; ver "Backend: pendiente de adaptar". |
-| 3. Portal | ✅ **Nuevo alcance completo, en modo demo** (`mockApi: true`): vistas de cliente y de admin, registro, conexiones AWS y GitHub, catálogo, formulario dinámico, estimador de costes y releases. 46 pruebas Vitest en verde. |
+| 2. Backend | ✅ **Nuevo alcance completo** (D-24 a D-26; 62 pruebas): login con JWT, GitHub App **real** (o mock), y AWS, STS y despliegues **simulados**. Falta: AWS real (Terraform) y webhook con URL pública. |
+| 3. Portal | ✅ **Conectado a la API** (`mockApi: false` desde D-25; el modo demo sigue disponible): vistas de cliente y de admin, registro, conexiones AWS y GitHub (con `/portal/github/callback`), catálogo, formulario dinámico, estimador de costes y releases. 53 pruebas Vitest. |
 | 4. Terraform y pipelines | ⏳ Sin empezar (`backend/deploy/*` vacías). Hay que hacerlo **con el nuevo alcance**. |
-| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-22) y `frontend/README.md` |
+| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-26) y `backend/docs/github-app.md` y `frontend/README.md` |
 
-**Prioridad del usuario:** de momento le interesa sobre todo el **flujo del front**. Antes de empezar con el backend o el Terraform, preguntarle por dónde seguir.
+## Dónde retomar (sesión del 2026-10-19)
+
+**Hecho en la última sesión:**
+- D-23: sin Fargate ni SQS.
+- D-24: login con JWT.
+- D-25: el portal habla con la API real; GitHub es real o mock, y AWS y los despliegues están simulados en la API.
+- D-26: autorización OAuth del usuario al conectar GitHub.
+
+**Para verlo funcionar:**
+1. **API:** F5 "ReleEasy API (mock)".
+2. **Portal:** `npx ng serve`.
+3. **Entrar** con `demo@ferreteria-lopez.es` / `demo1234`.
+4. **Recorrer el flujo:**
+   - conectar AWS con cualquier ARN válido (si contiene `fail`, simula un error);
+   - conectar GitHub (simulado mientras no exista la app);
+   - crear una app, que se despliega sola hasta `SUCCEEDED`.
+
+**Siguientes pasos posibles** (preguntar al usuario por cuál seguir antes de empezar):
+1. **Crear la GitHub App real.** Lo hace el usuario a mano siguiendo `backend/docs/github-app.md`; después, poner `RELEASY_GITHUB_*` en `backend/.env` y `githubAppSlug`/`githubClientId` en `config.json`, y probarlo juntos.
+2. **Webhook de push en local** con una URL pública (p. ej. smee.io), para ver despliegues por cada merge.
+3. **Fase 4:** Terraform, pipelines y la plantilla de CloudFormation del rol del cliente (ver más abajo). **Nunca `apply` sin confirmación.**
+4. **Fase 5:** README de puesta en marcha y diagrama de arquitectura.
+
+**Git:** el trabajo del 2026-10-19 está en un **commit local sin subir**. El usuario hará `git push` cuando la GitHub App real esté creada y probada.
+
+**Al cambiar el catálogo** (`template-catalog.ts`), ejecutar `npm run export:catalog` en `frontend/`, porque la API lee el JSON exportado.
 
 **Git:** la rama `main` está subida a https://github.com/jdan2/ReleEasy-Cloud (repo **público**), con `origin/main` como rama de seguimiento. La cuenta `Marmolito` es colaboradora con permiso de escritura (`gh` autenticado).
 
@@ -35,7 +61,7 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 - **Pedir confirmación antes de instalar herramientas globales del sistema.**
 - Nunca guardar secretos en el repo: usar variables de entorno, `.env.example` y Secrets Manager en AWS.
 - En la raíz solo están `frontend/` y `backend/`, más `DEPENDENCIAS.txt`, `CLAUDE.md`, `.gitignore` y `.vscode/` (D-13).
-- Si algo es ambiguo, elegir la opción más simple que cumpla el objetivo y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-23**).
+- Si algo es ambiguo, elegir la opción más simple que cumpla el objetivo y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-27**).
 - **Registrar toda dependencia, herramienta, extensión, provider de Terraform o imagen base en `DEPENDENCIAS.txt`** (con versión, ámbito, forma de instalación y fecha) y añadir una línea al historial del final.
 - El usuario suele tener su propio `ng serve` en el puerto 4200: hacer las pruebas en otro puerto y no matar su proceso.
 
@@ -47,57 +73,67 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
   y para Node: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 24.22.0`.
 - Los comandos Bash que se lanzan en paralelo comparten el directorio de trabajo: usar rutas absolutas.
 
-## Portal (nuevo alcance, modo demo): `frontend/`
+## Portal: `frontend/`
 
 - Angular 22 con standalone components, zoneless y TS `strict` + `strictTemplates`. Tailwind CSS 4.3.3 (PostCSS) y clases de componente en `src/styles.css` (`.card`, `.btn-primary`, `.form-input`, `.data-table`…). Sin Angular Material (D-06); estilos en CSS (D-16).
-- `main.ts` lee `public/config.json` (`{"apiUrl", "mockApi"}`) antes de arrancar Angular (token `APP_CONFIG`). **`mockApi: true`** activa el modo demo (D-17): `core/mock/mock-api.interceptor.ts` responde con `MockBackend`, que guarda el estado en `localStorage` (botón "Restablecer datos" en la franja amarilla).
-- Usuarios de demostración: cliente `demo@ferreteria-lopez.es` / `demo1234` (AWS y GitHub conectados, 2 apps) y administrador `admin` / `admin`.
+- `main.ts` lee `public/config.json` (`{"apiUrl", "mockApi", "githubAppSlug", "githubClientId"}`) antes de arrancar Angular (token `APP_CONFIG`). Ahora está en `mockApi: false`, contra la API. **`mockApi: true`** activa el modo demo (D-17): `core/mock/mock-api.interceptor.ts` responde con `MockBackend`, que guarda el estado en `localStorage` (botón "Restablecer datos" en la franja amarilla).
+- Usuarios de demostración: en el modo demo del portal, cliente `demo@ferreteria-lopez.es` / `demo1234` (con AWS y GitHub conectados y 2 apps) y administrador `admin` / `admin`. Contra la API (perfil `mock-fast`), el mismo cliente pero sin conexiones; el administrador sale de `backend/.env`.
 - **Contrato de la API (D-21), definido en `core/api/models.ts` y `core/api/releasy-api.service.ts`:**
   - Autenticación: `POST /api/auth/register {companyName,email,password}` y `POST /api/auth/login {email,password}`, que devuelven `Session{token,user{id,email,name,role,tenantId}}`. Después, `Authorization: Bearer <token>`.
   - Cliente:
-    - `GET /api/me/tenant` → `Tenant{id,name,email,aws{status,externalId,platformAccountId,roleArn,accountId,connectedAt},github{status,accountLogin,installationId,connectedAt},appCount,createdAt}`
+    - `GET /api/me/tenant` → `Tenant{id,name,email,aws{status,externalId,platformAccountId,roleArn,accountId,connectedAt},github{status,accountLogin,installationId,authorizedBy,connectedAt},appCount,createdAt}`
     - `POST /api/me/aws-connection {roleArn}` y `DELETE` para desconectar
-    - `POST` y `DELETE /api/me/github-connection`
+    - `POST /api/me/github-connection {code, installationId?}` (código OAuth de GitHub, D-26) y `DELETE`
     - `GET /api/me/github/repositories` → `[{fullName,description,private,defaultBranch,branches[]}]`
     - `GET` y `POST /api/me/apps` (`{name,templateId,repository,branch,options,usage}`)
   - Catálogo: `GET /api/templates` y `GET /api/templates/{id}`.
   - Administrador: `GET /api/tenants`, `GET /api/tenants/{id}` y `GET /api/tenants/{id}/apps`.
   - App (propietario o admin): `GET /api/apps/{id}` y `GET /api/apps/{id}/releases`.
   - `App{id,tenantId,name,templateId,repository,branch,options,usage,url,createdAt,updatedAt}`. Errores en formato ProblemDetail.
-- **Plantillas (D-22):** `core/templates/template-catalog.ts` define de forma declarativa las 3 plantillas, con grupos de opciones (`toggle`, `select`, `number`, `text` y `keyvalue`, más `visibleWhen`), campos y perfiles de uso. Incluye `validateOptions` (que la API debe replicar) y `describeOptions`.
+- **Plantillas (D-22):** `core/templates/template-catalog.ts` define de forma declarativa las 3 plantillas, con grupos de opciones (`toggle`, `select`, `number`, `text` y `keyvalue`, más `visibleWhen`), campos y perfiles de uso. Incluye `validateOptions` (la API lo replica en `TemplateCatalog`, con los mismos mensajes) y `describeOptions`.
 - **Costes (D-20):** precios de referencia de eu-west-1 en `core/pricing/aws-prices.ts` y la función pura `estimateMonthlyCost(template, options, usage)` en `core/pricing/cost-estimator.ts`. La cuota simulada es de 9 USD por app y mes.
 - Rutas:
   - `/login` y `/register`;
-  - `/portal` (inicio con los pasos de configuración y las apps), `/portal/aws`, `/portal/github`, `/portal/templates`, `/portal/templates/:templateId/new` (formulario + coste en vivo) y `/portal/apps/:appId`;
+  - `/portal` (inicio con los pasos de configuración y las apps), `/portal/aws`, `/portal/github`, `/portal/github/callback` (Callback URL de la GitHub App: comprueba el `state` y envía el `code`), `/portal/templates`, `/portal/templates/:templateId/new` (formulario + coste en vivo) y `/portal/apps/:appId`;
   - `/admin`, `/admin/tenants/:tenantId` y `/admin/apps/:appId`;
   - protegidas con `roleGuard`.
-- Pruebas: `npx ng test --watch=false` (46). Arranque: `cd frontend && npx ng serve`.
+- Pruebas: `npx ng test --watch=false` (53). El catálogo se exporta a la API con `npm run export:catalog` (D-25). Arranque: `cd frontend && npx ng serve`.
 
-## Backend: pendiente de adaptar al nuevo alcance (`backend/`)
+## Backend (`backend/`): nuevo alcance hecho, AWS simulado
 
-**Lo que existe** (alcance original, D-01 a D-12):
-- Java 21, Spring Boot 3.5.16 y AWS SDK v2 2.56.0, con capas `domain`, `application` (puertos `AccountProvisioner` y `DeploymentOrchestrator`), `infrastructure` (mock/memory/aws/dynamodb/config) y `web`.
-- `releasy.aws.mode=mock|real`.
-- Webhook `POST /api/webhooks/github` con HMAC-SHA256, filtro de push y reenvíos; estados del release (`ReleaseStatus`); repos DynamoDB; Basic con un administrador.
-- 43 pruebas.
-- Arranque: F5 "ReleEasy API (mock)", o `cd backend && set -a; source .env; set +a; SPRING_PROFILES_ACTIVE=mock-fast ./mvnw spring-boot:run`.
-
-**Lo que hay que cambiar:**
-- Usuarios con rol (`ADMIN`/`CLIENT`), registro, login con JWT y contraseñas con BCrypt. Una tabla `users` (o un GSI por email).
-- Sustituir `AccountProvisioner` (Organizations) por un puerto `AwsConnectionVerifier` (`sts:AssumeRole` con External ID). Tenant con `aws{...}` y `github{...}`.
-- GitHub App: instalación (`installation_id`), lista de repos con un token de instalación y webhook de la app. El webhook HMAC actual se reutiliza.
-- Plantillas: catálogo, validación de opciones (la misma que en el front) y `App{templateId,options,usage}` en lugar de `plan`.
-- Endpoints `/api/me/*`, `/api/templates`, y autorización por propietario en `/api/apps/{id}`.
-- `DeploymentRequest`: añadir `templateId`, `options` y `externalId`, y quitar `plan`.
+- Java 21, Spring Boot 3.5.16 y AWS SDK v2 2.56.0, con capas `domain`, `application` (servicios y puertos), `infrastructure` (mock/memory/aws/dynamodb/github/security/config) y `web`.
+- **Modos independientes:**
+  - `RELEASY_AWS_MODE=mock|real`: STS, Step Functions y DynamoDB, o memoria;
+  - `RELEASY_GITHUB_MODE=mock|real`: GitHub App real (`RELEASY_GITHUB_APP_ID`, `_PRIVATE_KEY_PATH`, `_CLIENT_ID` y `_CLIENT_SECRET`; guía en `backend/docs/github-app.md`). Al conectar, el usuario autoriza con OAuth y la API comprueba que la instalación es suya (D-26).
+- **Autenticación (D-24):**
+  - `POST /api/auth/register|login` devuelven un JWT HS256 (`RELEASY_JWT_SECRET`), con contraseñas en BCrypt.
+  - Usuarios en la tabla `releasy-users` (clave: email). El administrador sale de `.env`.
+- **Rutas:**
+  - `/api/me/*` (`CLIENT`): `tenant`, `aws-connection`, `github-connection`, `github/repositories`, `apps`.
+  - `/api/templates`.
+  - `/api/tenants/**` (`ADMIN`, solo lectura).
+  - `/api/apps/{id}` y `/releases` (propietario o administrador; si no, 404).
+  - Webhook `POST /api/webhooks/github` (HMAC).
+- **Piezas principales:**
+  - Puertos: `GithubGateway` (`GithubAppClient` / `MockGithubGateway`), `AwsConnectionVerifier` (`StsAwsConnectionVerifier` / `MockAwsConnectionVerifier`) y `DeploymentOrchestrator`.
+  - `ReleaseLauncher` lanza los releases, tanto al crear la app (último commit de la rama) como desde el webhook.
+  - `TemplateCatalog` carga `resources/catalog/templates.json` (exportado del portal) y valida igual que el front.
+- **Arranque:**
+  - F5 "ReleEasy API (mock)", o `cd backend && set -a; source .env; set +a; SPRING_PROFILES_ACTIVE=mock-fast ./mvnw spring-boot:run`.
+  - `mock-fast` crea `demo@ferreteria-lopez.es` / `demo1234`.
+  - El `.env` necesita `RELEASY_JWT_SECRET`; ver `.env.example`.
+- **Pendiente:**
+  - webhook de la app con URL pública;
+  - AWS real (fase 4).
 
 ## Fase 4, Terraform y pipelines: `backend/deploy/` (pendiente, con el nuevo alcance)
 
 - Terraform >= 1.10, backend S3 con `use_lockfile = true`. Variables con descripción y validaciones. Validar con `terraform init -backend=false` y `terraform validate`. **Nunca `apply` sin confirmación.**
-- `platform/` (cuenta de la plataforma): bucket de estados (versionado, cifrado y sin acceso público), tablas DynamoDB, ECR, CodeBuild (build y deploy), Step Functions e IAM con mínimo privilegio. El rol de CodeBuild asume `ReleEasyDeployRole` **con External ID** en la cuenta del cliente.
+- `platform/` (cuenta de la plataforma): bucket de estados (versionado, cifrado y sin acceso público), tablas DynamoDB (`users`, `tenants`, `apps` y `releases`), ECR, CodeBuild (build y deploy), Step Functions e IAM con mínimo privilegio. El rol de CodeBuild asume `ReleEasyDeployRole` **con External ID** en la cuenta del cliente.
 - **Plantilla de CloudFormation del rol del cliente** (`releasy-deploy-role.yaml`): parámetros `PlatformAccountId` y `ExternalId`, permisos limitados a los servicios de las plantillas y salida `RoleArn`.
-- `templates/`: **tres módulos**, `angular-static`, `springboot-api` y `angular-springboot` (o módulos comunes `frontend` y `backend` compuestos). Cada opción del catálogo es una variable (`enable_waf`, `enable_rum`, `custom_domain`, `api_exposure = alb|api_gateway`, `task_cpu/memory`, `min/max_tasks`, `enable_sqs`, `enable_xray`, `log_retention_days`, `env_vars`, `notification_email`…).
-  - Requisitos que se mantienen: VPC pública/privada, ECS Fargate con circuit breaker y rollback, health check en `/actuator/health`, S3 privado + CloudFront con OAC y `/api/*` hacia el backend.
-  - Outputs: URL, bucket, distribución, cluster y servicio.
+- `templates/`: **tres módulos**, `angular-static`, `springboot-api` y `angular-springboot` (o módulos comunes `frontend` y `backend` compuestos). Cada opción del catálogo es una variable (`enable_waf`, `enable_rum`, `custom_domain`, `api_exposure = alb|api_gateway`, `instance_type`, `min/max_instances`, `cpu_target`, `detailed_monitoring`, `enable_xray`, `log_retention_days`, `env_vars`, `notification_email`…).
+  - Requisitos que se mantienen: VPC pública/privada, Auto Scaling Group de EC2 (Docker + imagen de ECR) detrás de un ALB, con *instance refresh* y rollback, health check en `/actuator/health`, S3 privado + CloudFront con OAC y `/api/*` hacia el backend.
+  - Outputs: URL, bucket, distribución, Auto Scaling Group y ALB.
 - `pipelines/`:
   - `buildspec-build.yml`: clona en el SHA (con el token de instalación de la GitHub App) y construye según la plantilla (`npm ci && ng build` en `/frontend` y/o `./mvnw -B verify` en `/backend`, más la imagen Docker; si no hay Dockerfile, `eclipse-temurin:21-jre`).
   - `buildspec-deploy.yml`: `terraform init` con backend parcial (`tenants/<tenantId>/<appId>/terraform.tfstate`), `plan` y `apply`, sube el front a S3, invalida CloudFront y escribe el estado en DynamoDB, también si falla.
@@ -105,7 +141,7 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 
 ## Fase 5, documentación: `backend/docs/` (pendiente, en español)
 
-- README de puesta en marcha (local en modo mock y en AWS), diagrama de arquitectura en Mermaid y pasos manuales: crear la GitHub App (permisos, webhook y secreto), publicar la plantilla de CloudFormation del rol y guardar los secretos en Secrets Manager.
+- README de puesta en marcha (local en modo mock y en AWS), diagrama de arquitectura en Mermaid y pasos manuales: publicar la plantilla de CloudFormation del rol y guardar los secretos en Secrets Manager. La guía de la GitHub App ya está en `backend/docs/github-app.md`; falta añadirle el webhook.
 - Verificación final: todo compila y pasan las pruebas.
 
 ## Commits

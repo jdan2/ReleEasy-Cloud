@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "export:catalog": "esbuild scripts/export-catalog.ts --bundle --platform=node --format=esm --log-level=warning | node --input-type=module - ../backend/src/main/resources/catalog/templates.json"
   },
   "private": true,
   "packageManager": "npm@11.19.1",

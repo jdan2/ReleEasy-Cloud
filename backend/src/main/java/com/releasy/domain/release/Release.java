@@ -8,7 +8,7 @@ import java.time.Instant;
  * <p>Es inmutable: cada cambio de estado devuelve una copia nueva y valida la transición con
  * {@link ReleaseStatus#canTransitionTo(ReleaseStatus)}.
  *
- * @param id            identificador ordenable por fecha ({@code r-yyyyMMddHHmmss-xxxxxx}); también
+ * @param id            identificador ordenable por fecha ({@code r-yyyyMMddHHmmssSSS-xxxxxx}); también
  *                      es el nombre de la ejecución de Step Functions
  * @param commitSha     SHA del commit desplegado
  * @param commitMessage primera línea del mensaje del commit

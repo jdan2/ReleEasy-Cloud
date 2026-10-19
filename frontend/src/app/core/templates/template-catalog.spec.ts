@@ -37,21 +37,22 @@ describe('Catálogo de plantillas', () => {
 
   it('valida rangos numéricos, mínimo ≤ máximo y nombres de variables', () => {
     const base = { ...defaultOptions(spring), backend_alarms: false };
-    expect(validateOptions(spring, { ...base, min_tasks: 0 }).join()).toContain('Contenedores mínimos');
-    expect(validateOptions(spring, { ...base, min_tasks: 3, max_tasks: 2 }).join()).toContain('no puede ser menor');
+    expect(validateOptions(spring, { ...base, min_instances: 0 }).join()).toContain('Instancias mínimas');
+    expect(validateOptions(spring, { ...base, min_instances: 3, max_instances: 2 }).join()).toContain('no puede ser menor');
     expect(validateOptions(spring, { ...base, env_vars: { 'mal-nombre': 'x' } }).join()).toContain('mal-nombre');
     expect(validateOptions(spring, { ...base, env_vars: { RELEASY_TOKEN: 'x' } }).join()).toContain('reservado');
   });
 
   it('muestra los campos dependientes solo cuando se cumple su condición', () => {
-    expect(isVisible({ key: 'sqs_queue', equals: true }, { sqs_queue: false })).toBe(false);
-    expect(isVisible({ key: 'sqs_queue', equals: true }, { sqs_queue: true })).toBe(true);
+    expect(isVisible({ key: 'custom_domain', equals: true }, { custom_domain: false })).toBe(false);
+    expect(isVisible({ key: 'custom_domain', equals: true }, { custom_domain: true })).toBe(true);
     expect(isVisible(undefined, {})).toBe(true);
   });
 
   it('resume los componentes activados para el detalle de la app', () => {
-    const summary = describeOptions(spring, { ...defaultOptions(spring), sqs_queue: true, env_vars: { A: '1', B: '2' } });
-    expect(summary).toContain('Cola de mensajes (Amazon SQS)');
+    const summary = describeOptions(spring, { ...defaultOptions(spring), xray_tracing: true, env_vars: { A: '1', B: '2' } });
+    expect(summary).toContain('Trazas distribuidas (AWS X-Ray)');
+    expect(summary).toContain('Tipo de instancia: t3.small · 2 vCPU · 2 GB (recomendado)');
     expect(summary).toContain('2 variable(s) de entorno');
     expect(summary.some((s) => s.startsWith('Punto de entrada: Balanceador'))).toBe(true);
   });

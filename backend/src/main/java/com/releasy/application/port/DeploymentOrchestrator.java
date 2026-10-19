@@ -1,6 +1,6 @@
 package com.releasy.application.port;
 
-import com.releasy.domain.app.AppPlan;
+import java.util.Map;
 
 /**
  * Puerto hacia el motor de despliegue (Step Functions + CodeBuild).
@@ -19,7 +19,10 @@ public interface DeploymentOrchestrator {
      */
     void startDeployment(DeploymentRequest request);
 
-    /** Datos que recibe la máquina de estados como entrada (se serializa a JSON tal cual). */
+    /**
+     * Datos que recibe la máquina de estados como entrada (se serializa a JSON tal cual). CodeBuild
+     * asume {@code tenantRoleArn} con {@code externalId} para desplegar en la cuenta del cliente.
+     */
     record DeploymentRequest(
             String releaseId,
             String tenantId,
@@ -27,10 +30,12 @@ public interface DeploymentOrchestrator {
             String appName,
             String accountId,
             String tenantRoleArn,
+            String externalId,
             String repository,
             String branch,
             String commitSha,
             String commitMessage,
-            AppPlan plan) {
+            String templateId,
+            Map<String, Object> options) {
     }
 }

@@ -1,17 +1,13 @@
 package com.releasy.infrastructure.config;
 
-import com.releasy.application.tenant.AccountCreationPoller;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.time.Clock;
 
 /**
- * Beans transversales: reloj, planificador de tareas y la tarea periódica que consulta la creación de
- * cuentas AWS.
+ * Beans transversales: reloj y planificador de tareas (lo usa el orquestador simulado del modo mock).
  */
 @Configuration
 public class CoreConfig {
@@ -27,12 +23,5 @@ public class CoreConfig {
         scheduler.setPoolSize(4);
         scheduler.setThreadNamePrefix("releasy-scheduler-");
         return scheduler;
-    }
-
-    @Bean
-    ApplicationRunner scheduleAccountCreationPolling(TaskScheduler scheduler, AccountCreationPoller poller,
-                                                     ReleasyProperties properties) {
-        return args -> scheduler.scheduleWithFixedDelay(poller::pollPendingAccounts,
-                properties.aws().accountCreationPollInterval());
     }
 }

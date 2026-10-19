@@ -56,22 +56,23 @@ describe('NewAppPage (modo demo)', () => {
   it('construye el formulario a partir de la plantilla y muestra el coste', () => {
     expect(el().textContent).toContain('Nueva aplicación · Spring Boot');
     expect(el().textContent).toContain('Exposición de la API');
-    expect(el().textContent).toContain('Mensajería');
+    expect(el().textContent).toContain('Tipo de instancia');
+    expect(el().textContent).not.toContain('Mensajería');
     expect(totalText()).toContain('Total estimado');
     expect(el().querySelectorAll('#app-repo option').length).toBeGreaterThan(1);
   });
 
   it('muestra campos dependientes y recalcula el coste al activar opciones', async () => {
-    expect(el().querySelector('#opt-sqs_visibility_timeout')).toBeNull();
+    expect(el().querySelector('#opt-api_throttle_rps')).toBeNull();
     const before = totalText();
 
-    const sqsToggle = [...el().querySelectorAll('label')].find((l) => l.textContent?.includes('Amazon SQS'))!;
-    sqsToggle.querySelector('input')!.click();
+    const exposure = el().querySelector<HTMLSelectElement>('#opt-api_exposure')!;
+    exposure.value = 'api_gateway';
+    exposure.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(el().querySelector('#opt-sqs_visibility_timeout')).not.toBeNull();
-    expect(el().querySelector('#usage-sqsMessagesPerMonth')).not.toBeNull();
+    expect(el().querySelector('#opt-api_throttle_rps')).not.toBeNull();
     expect(totalText()).not.toEqual(before);
   });
 

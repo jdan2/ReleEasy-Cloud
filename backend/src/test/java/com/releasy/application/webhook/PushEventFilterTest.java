@@ -1,10 +1,10 @@
 package com.releasy.application.webhook;
 
 import com.releasy.domain.app.App;
-import com.releasy.domain.app.AppPlan;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -46,7 +46,8 @@ class PushEventFilterTest {
 
     @Test
     void soloApuntaALaAppSiLaRamaCoincideExactamente() {
-        App app = new App("a-1", "t-1", "tienda", "acme/tienda", "master", AppPlan.BASIC, "https://x", Instant.EPOCH, Instant.EPOCH);
+        App app = new App("a-1", "t-1", "tienda", "springboot-api", "acme/tienda", "master", Map.of(), Map.of(), "https://x",
+                Instant.EPOCH, Instant.EPOCH);
 
         assertThat(filter.targets(app, "master")).isTrue();
         assertThat(filter.targets(app, "main")).isFalse();

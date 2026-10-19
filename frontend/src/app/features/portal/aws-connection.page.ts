@@ -66,7 +66,7 @@ export class AwsConnectionPage implements OnInit {
             Condition:
               StringEquals: { sts:ExternalId: ${aws.externalId} }
       # Permisos limitados a los servicios que usan las plantillas
-      # (S3, CloudFront, ECS, ECR, ELB, VPC, CloudWatch, SQS, API Gateway...)
+      # (S3, CloudFront, EC2, Auto Scaling, ECR, ELB, VPC, CloudWatch, API Gateway...)
       ManagedPolicyArns: [ ... ]`
       : '';
   });

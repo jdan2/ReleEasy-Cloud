@@ -1,12 +1,15 @@
 package com.releasy.infrastructure.dynamodb;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.releasy.domain.app.App;
-import com.releasy.domain.app.AppPlan;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Elemento de la tabla {@code apps}.
@@ -16,6 +19,9 @@ import java.time.Instant;
  *   <li>{@value #TENANT_INDEX}: partición {@code tenantId}, para listar las apps de un cliente;</li>
  *   <li>{@value #REPOSITORY_INDEX}: partición {@code repository}, para que el webhook encuentre la app.</li>
  * </ul>
+ *
+ * <p>Las opciones y el uso estimado se guardan como texto JSON: su forma depende de la plantilla y
+ * nunca se consultan por separado.
  */
 @DynamoDbBean
 public class AppItem {
@@ -23,12 +29,16 @@ public class AppItem {
     public static final String TENANT_INDEX = "tenantId-index";
     public static final String REPOSITORY_INDEX = "repository-index";
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     private String appId;
     private String tenantId;
     private String name;
     private String repository;
+    private String templateId;
     private String branch;
-    private String plan;
+    private String optionsJson;
+    private String usageJson;
     private String url;
     private Instant createdAt;
     private Instant updatedAt;
@@ -39,8 +49,10 @@ public class AppItem {
         item.tenantId = a.tenantId();
         item.name = a.name();
         item.repository = a.repository();
+        item.templateId = a.templateId();
         item.branch = a.branch();
-        item.plan = a.plan().name();
+        item.optionsJson = write(a.options());
+        item.usageJson = write(a.usage());
         item.url = a.url();
         item.createdAt = a.createdAt();
         item.updatedAt = a.updatedAt();
@@ -48,7 +60,25 @@ public class AppItem {
     }
 
     public App toDomain() {
-        return new App(appId, tenantId, name, repository, branch, AppPlan.valueOf(plan), url, createdAt, updatedAt);
+        return new App(appId, tenantId, name, templateId, repository, branch,
+                read(optionsJson, new TypeReference<Map<String, Object>>() { }),
+                read(usageJson, new TypeReference<Map<String, Double>>() { }), url, createdAt, updatedAt);
+    }
+
+    private static String write(Map<String, ?> value) {
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("No se pudo serializar a JSON", e);
+        }
+    }
+
+    private static <T> T read(String json, TypeReference<T> type) {
+        try {
+            return JSON.readValue(json == null ? "{}" : json, type);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("JSON no válido en la tabla apps", e);
+        }
     }
 
     @DynamoDbPartitionKey
@@ -69,8 +99,14 @@ public class AppItem {
     public String getBranch() { return branch; }
     public void setBranch(String branch) { this.branch = branch; }
 
-    public String getPlan() { return plan; }
-    public void setPlan(String plan) { this.plan = plan; }
+    public String getTemplateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
+
+    public String getOptionsJson() { return optionsJson; }
+    public void setOptionsJson(String optionsJson) { this.optionsJson = optionsJson; }
+
+    public String getUsageJson() { return usageJson; }
+    public void setUsageJson(String usageJson) { this.usageJson = usageJson; }
 
     public String getUrl() { return url; }
     public void setUrl(String url) { this.url = url; }

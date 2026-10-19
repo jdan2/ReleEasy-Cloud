@@ -1,7 +1,11 @@
 package com.releasy.web;
 
 import com.releasy.application.ConflictException;
+import com.releasy.application.InvalidRequestException;
 import com.releasy.application.NotFoundException;
+import com.releasy.application.auth.InvalidCredentialsException;
+import com.releasy.application.port.AwsConnectionVerifier.AwsConnectionException;
+import com.releasy.application.port.GithubApiException;
 import com.releasy.application.webhook.InvalidSignatureException;
 import com.releasy.application.webhook.InvalidWebhookPayloadException;
 import com.releasy.domain.release.IllegalReleaseTransitionException;
@@ -26,6 +30,22 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler({ConflictException.class, IllegalReleaseTransitionException.class})
     ProblemDetail conflict(RuntimeException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler({InvalidRequestException.class, AwsConnectionException.class})
+    ProblemDetail badRequest(RuntimeException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /** GitHub falló o no respondió: es un problema de un servicio externo, no de la petición. */
+    @ExceptionHandler(GithubApiException.class)
+    ProblemDetail githubError(GithubApiException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, "Error al consultar GitHub: " + e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ProblemDetail invalidCredentials(InvalidCredentialsException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
     @ExceptionHandler(InvalidSignatureException.class)

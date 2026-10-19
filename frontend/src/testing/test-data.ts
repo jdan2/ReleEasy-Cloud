@@ -2,7 +2,7 @@ import { App, Release, ReleaseStatus, Session } from '../app/core/api/models';
 import { AppConfig } from '../app/core/config/app-config';
 
 /** Datos de prueba compartidos por los specs. */
-export const TEST_CONFIG: AppConfig = { apiUrl: 'http://api.test', mockApi: false };
+export const TEST_CONFIG: AppConfig = { apiUrl: 'http://api.test', mockApi: false, githubAppSlug: null, githubClientId: null };
 
 export function aSession(role: 'ADMIN' | 'CLIENT' = 'CLIENT'): Session {
   return {

@@ -13,6 +13,4 @@ public interface TenantRepository {
     Optional<Tenant> findById(String id);
 
     List<Tenant> findAll();
-
-    List<Tenant> findByStatus(TenantStatus status);
 }
