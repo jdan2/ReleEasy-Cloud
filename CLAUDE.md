@@ -13,40 +13,46 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 7. **Base de datos:** fuera de alcance por ahora (D-19).
 8. **Sin ECS Fargate ni SQS** (D-23): el backend Spring Boot corre en EC2 con Auto Scaling detrás de un ALB.
 
-## Estado (actualizado 2026-10-19)
+## Estado (actualizado 2026-10-24)
 
 | Pieza | Estado |
 |---|---|
 | 1. Estructura y dependencias | ✅ |
-| 2. Backend | ✅ **Nuevo alcance completo** (D-24 a D-26; 62 pruebas): login con JWT, GitHub App **real** (o mock), y AWS, STS y despliegues **simulados**. Falta: AWS real (Terraform) y webhook con URL pública. |
+| 2. Backend | ✅ **Nuevo alcance completo** (D-24 a D-26; 62 pruebas): login con JWT, GitHub App **real y probada** (o mock), y AWS, STS y despliegues **simulados**. Falta: AWS real (Terraform) y webhook con URL pública. |
 | 3. Portal | ✅ **Conectado a la API** (`mockApi: false` desde D-25; el modo demo sigue disponible): vistas de cliente y de admin, registro, conexiones AWS y GitHub (con `/portal/github/callback`), catálogo, formulario dinámico, estimador de costes y releases. 53 pruebas Vitest. |
 | 4. Terraform y pipelines | ⏳ Sin empezar (`backend/deploy/*` vacías). Hay que hacerlo **con el nuevo alcance**. |
-| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-26) y `backend/docs/github-app.md` y `frontend/README.md` |
+| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-26), `backend/docs/github-app.md`, `frontend/README.md`, `SESION-Y-USUARIOS.md` y la memoria `TFM.docx` (capítulo 4 escrito) |
 
-## Dónde retomar (sesión del 2026-10-19)
+## Dónde retomar (sesión del 2026-10-24)
 
 **Hecho en la última sesión:**
-- D-23: sin Fargate ni SQS.
-- D-24: login con JWT.
-- D-25: el portal habla con la API real; GitHub es real o mock, y AWS y los despliegues están simulados en la API.
-- D-26: autorización OAuth del usuario al conectar GitHub.
+- **GitHub App real creada y probada:** `releeasy-cloud-dev` (App ID 5457976), con Callback URL `http://localhost:4200/portal/github/callback`. El cliente demo la instaló y autorizó, y la conexión funcionó.
+  - Clave privada en `~/.releasy/github-app.pem`, fuera del repo.
+  - `RELEASY_GITHUB_MODE=real` y `RELEASY_GITHUB_*` en `backend/.env`; `githubAppSlug` y `githubClientId` en `config.json`.
+  - El webhook de la app sigue **desactivado** (`events: []`).
+- `SESION-Y-USUARIOS.md` explica dónde se guardan los usuarios (en memoria con `mock`, en DynamoDB con `real`) y la sesión (JWT en `sessionStorage`).
+- **Memoria del TFM** (`TFM.docx`, con `PLANTILLA.docx` de UNIR como referencia):
+  - Se escribió el **capítulo 4**: requisitos, sistema, decisiones de arquitectura, estado y evaluación, con las tablas 5 a 12.
+  - Los capítulos 1 a 3 y el artículo se alinearon con lo implementado: **Angular** (con justificación técnica frente a React), **EC2 con Auto Scaling**, **CloudWatch/X-Ray/RUM** y sin Fargate, RDS ni Prometheus/Grafana.
+  - Los índices se rehicieron con campos `TOC` y `SEQ`, y Word pide actualizarlos al abrir.
+  - Detalles de formato en la memoria `tfm-document`.
 
 **Para verlo funcionar:**
-1. **API:** F5 "ReleEasy API (mock)".
-2. **Portal:** `npx ng serve`.
+1. **API:** F5 "ReleEasy API (mock)" (lee `backend/.env`: AWS simulado, GitHub real).
+2. **Portal:** `npx ng serve`, **en el puerto 4200**, porque la Callback URL de la GitHub App apunta ahí.
 3. **Entrar** con `demo@ferreteria-lopez.es` / `demo1234`.
 4. **Recorrer el flujo:**
+   - conectar GitHub (instala y autoriza la app real; con `RELEASY_GITHUB_MODE=mock` se simula);
    - conectar AWS con cualquier ARN válido (si contiene `fail`, simula un error);
-   - conectar GitHub (simulado mientras no exista la app);
-   - crear una app, que se despliega sola hasta `SUCCEEDED`.
+   - crear una app con un repo real, que se despliega sola (simulado) hasta `SUCCEEDED`.
 
 **Siguientes pasos posibles** (preguntar al usuario por cuál seguir antes de empezar):
-1. **Crear la GitHub App real.** Lo hace el usuario a mano siguiendo `backend/docs/github-app.md`; después, poner `RELEASY_GITHUB_*` en `backend/.env` y `githubAppSlug`/`githubClientId` en `config.json`, y probarlo juntos.
-2. **Webhook de push en local** con una URL pública (p. ej. smee.io), para ver despliegues por cada merge.
-3. **Fase 4:** Terraform, pipelines y la plantilla de CloudFormation del rol del cliente (ver más abajo). **Nunca `apply` sin confirmación.**
-4. **Fase 5:** README de puesta en marcha y diagrama de arquitectura.
+1. **Webhook de push en local** con una URL pública (p. ej. smee.io): activar el evento *Push* en la app, con el mismo secreto que `RELEASY_GITHUB_WEBHOOK_SECRET`.
+2. **Fase 4:** Terraform, pipelines y la plantilla de CloudFormation del rol del cliente (ver más abajo). **Nunca `apply` sin confirmación.**
+3. **Fase 5:** README de puesta en marcha y diagrama de arquitectura (en el TFM queda reservada la **Figura 3**, marcada en amarillo).
+4. **TFM:** al cerrar cada fase, actualizar el capítulo 4, sobre todo 4.2.9 (estado) y 4.3 (evaluación). Queda un hueco en amarillo en 4.3.2: falta indicar qué más del flujo probó el usuario.
 
-**Git:** el trabajo del 2026-10-19 está en un **commit local sin subir**. El usuario hará `git push` cuando la GitHub App real esté creada y probada.
+**Git:** hay un commit local del 2026-10-19 sin subir y, además, cambios sin commitear del 2026-10-24: `config.json`, `CLAUDE.md`, `DEPENDENCIAS.txt`, `SESION-Y-USUARIOS.md`, `TFM.docx` y `PLANTILLA.docx`. Los `.docx` se **versionan a propósito** para compartirlos con el compañero; no añadirlos al `.gitignore`. El usuario hace el `git push`.
 
 **Al cambiar el catálogo** (`template-catalog.ts`), ejecutar `npm run export:catalog` en `frontend/`, porque la API lee el JSON exportado.
 
@@ -60,10 +66,11 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 - **No ejecutar nada que cree o modifique recursos reales en AWS** (`terraform apply`, `AssumeRole` contra cuentas reales, creación de la GitHub App o de webhooks) sin confirmación explícita del usuario.
 - **Pedir confirmación antes de instalar herramientas globales del sistema.**
 - Nunca guardar secretos en el repo: usar variables de entorno, `.env.example` y Secrets Manager en AWS.
-- En la raíz solo están `frontend/` y `backend/`, más `DEPENDENCIAS.txt`, `CLAUDE.md`, `.gitignore` y `.vscode/` (D-13).
+- En la raíz solo están `frontend/` y `backend/`, más `DEPENDENCIAS.txt`, `SESION-Y-USUARIOS.md` (dónde se guardan usuarios y sesión), `TFM.docx` y `PLANTILLA.docx` (memoria del TFM y plantilla de UNIR, versionadas para el compañero), `CLAUDE.md`, `.gitignore` y `.vscode/` (D-13).
+- **Memoria del TFM:** al terminar cada fase, registrar lo hecho en el capítulo 4 de `TFM.docx` (en español, tono académico). Los capítulos 1 a 3 los escriben los autores: no tocarlos sin que lo pidan. No hay pandoc ni LibreOffice: se edita el XML y se valida con el skill docx.
 - Si algo es ambiguo, elegir la opción más simple que cumpla el objetivo y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-27**).
 - **Registrar toda dependencia, herramienta, extensión, provider de Terraform o imagen base en `DEPENDENCIAS.txt`** (con versión, ámbito, forma de instalación y fecha) y añadir una línea al historial del final.
-- El usuario suele tener su propio `ng serve` en el puerto 4200: hacer las pruebas en otro puerto y no matar su proceso.
+- El usuario suele tener su propio `ng serve` en el puerto 4200: hacer las pruebas en otro puerto y no matar su proceso. Excepción: para probar la GitHub App, el portal tiene que estar en el 4200 (Callback URL).
 
 ## Entorno (macOS 15.5, Apple Silicon)
 

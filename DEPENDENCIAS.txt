@@ -9,7 +9,8 @@ cada fase. Formato de cada entrada:
   Nombre | Version | Ambito | Como se instalo / origen | Fecha | Notas
 
 Ambitos: SISTEMA (herramienta global de la maquina), FRONTEND, BACKEND,
-TERRAFORM, PIPELINE (CodeBuild / Step Functions), AWS (servicio en la nube).
+TERRAFORM, PIPELINE (CodeBuild / Step Functions), AWS (servicio en la nube),
+SERVICIO EXTERNO (fuera de AWS) y DOCUMENTACION (memoria del TFM).
 
 
 --------------------------------------------------------------------------------
@@ -135,7 +136,20 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
 
 
 --------------------------------------------------------------------------------
- 7. HISTORIAL DE CAMBIOS DE ESTE REGISTRO
+ 7. SERVICIOS EXTERNOS Y DOCUMENTACION
+--------------------------------------------------------------------------------
+
+GitHub App "ReleEasy Cloud (dev)" (slug releeasy-cloud-dev, App ID 5457976) | - | SERVICIO EXTERNO | Creada a mano por el usuario en github.com siguiendo backend/docs/github-app.md | 2026-10-24 | Permisos Contents y Metadata de solo lectura; OAuth del usuario durante la instalacion (D-26); webhook desactivado hasta tener URL publica. Clave privada en ~/.releasy/github-app.pem (fuera del repo); App ID, Client ID y Client secret en backend/.env (no versionado); slug y Client ID en frontend/public/config.json.
+
+Python | 3.13.5 | DOCUMENTACION | Homebrew (ya instalado; no se instalo nada nuevo en el sistema) | 2026-10-24 | Solo para validar TFM.docx con el validador OOXML del skill docx de Claude Code.
+  defusedxml | 0.7.1 | DOCUMENTACION | pip en un entorno virtual temporal (scratchpad de la sesion) | 2026-10-24 | Dependencia del validador; no queda instalada en el proyecto ni en el sistema.
+  lxml | 6.1.3 | DOCUMENTACION | pip en el mismo entorno virtual temporal | 2026-10-24 | Validacion del XML contra los esquemas de Word; temporal.
+
+TFM.docx y PLANTILLA.docx | - | DOCUMENTACION | Anadidos por el usuario en la raiz del repo | 2026-10-24 | Memoria del TFM y plantilla de UNIR. Se versionan a proposito (no estan en .gitignore) para compartirlos con el companero de grupo.
+
+
+--------------------------------------------------------------------------------
+ 8. HISTORIAL DE CAMBIOS DE ESTE REGISTRO
 --------------------------------------------------------------------------------
 
 2026-10-17 | Creacion del registro. Fase 1: diagnostico e instalacion de herramientas del sistema.
@@ -152,3 +166,4 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
 2026-10-19 | D-24: login con JWT. Anadido spring-boot-starter-oauth2-resource-server 3.5.16; retirado software.amazon.awssdk:organizations (D-18).
 2026-10-19 | D-25: GitHub App real (JDK HttpClient + Nimbus, ya presentes) y script npm export:catalog con el esbuild que trae @angular/build. Sin dependencias nuevas.
 2026-10-19 | D-26: autorizacion OAuth del usuario al conectar GitHub. Sin dependencias nuevas.
+2026-10-24 | GitHub App real "releeasy-cloud-dev" creada y probada (RELEASY_GITHUB_MODE=real). Nueva seccion 7: servicios externos y documentacion (TFM.docx, PLANTILLA.docx y validacion con un venv temporal de Python con defusedxml y lxml). Sin dependencias nuevas en el codigo.

@@ -1,6 +1,6 @@
 {
   "apiUrl": "http://localhost:8080",
   "mockApi": false,
-  "githubAppSlug": null,
-  "githubClientId": null
+  "githubAppSlug": "releeasy-cloud-dev",
+  "githubClientId": "Iv23lioJIjquPs207pAx"
 }
