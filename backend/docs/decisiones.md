@@ -260,3 +260,17 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
   - Portal: `githubClientId` en `config.json` (es público).
 - **Mock:** cualquier código vale. El usuario es `usuario-demo` y el ID de instalación se calcula a partir del código.
 - **Resuelve** la limitación de seguridad de D-25.
+## D-27 · Reorganización de paquetes: adaptadores de entrada y de salida explícitos
+- **Fecha:** 2026-10-25.
+- **Contexto:** la arquitectura ya era hexagonal (dominio aislado, puertos en `application/port` y adaptadores en `infrastructure`), pero la separación entre adaptadores **de entrada** (quién llama a la aplicación) y **de salida** (a quién llama la aplicación) no era visible en la estructura de carpetas. Además, tres excepciones transversales estaban sueltas en la raíz de `application`, mientras el resto se agrupaba por feature.
+- **Decisión:** reordenar los paquetes para que la frontera entrada/salida sea explícita, siguiendo la convención de la industria (p. ej. el arquetipo de Bancolombia usa `entrypoints`/`adapters`):
+  - `web/` → `infrastructure/entrypoints/` (controladores REST, webhook, DTOs, seguridad y manejador de excepciones): son los **adaptadores de entrada** (driving).
+  - `infrastructure/{github,aws,dynamodb,memory,mock,security}/` → `infrastructure/adapters/…`: son los **adaptadores de salida** (driven).
+  - Las excepciones transversales (`ConflictException`, `InvalidRequestException`, `NotFoundException`) pasan a `application/shared/`, en simetría con `domain/shared`.
+  - `infrastructure/config/` **no se mueve**: es wiring de Spring, ni entrada ni salida.
+- **Qué NO se cambió, y por qué:**
+  - Los **enums** (`Role`, `ReleaseStatus`, `ConnectionStatus`) siguen junto al concepto de dominio al que pertenecen. Agruparlos en un paquete `enums` separaría cada enum de su significado: se organiza por concepto de negocio, no por mecanismo del lenguaje.
+  - No se añaden sufijos como `AppModel`/`AppDto`: el paquete ya comunica el rol (`domain/app/App` es el modelo; `…entrypoints/dto/AppResponse` es el DTO).
+  - Los casos de uso siguen en `application` (no se mueven a `domain`, a diferencia del arquetipo de Bancolombia): mantener dominio y aplicación separados es más fiel a la distinción entre reglas de negocio y orquestación.
+  - No se introducen *mappers* dedicados por frontera: para este tamaño, los métodos `from(...)` en los DTO son suficientes y evitan ceremonia.
+- **Verificación:** `./mvnw test` → 62 pruebas en verde, incluida la de integración que levanta el contexto de Spring Boot. No quedaron referencias a los paquetes antiguos.

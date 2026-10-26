@@ -1,9 +1,9 @@
 package com.releasy.application.app;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.releasy.application.ConflictException;
-import com.releasy.application.InvalidRequestException;
-import com.releasy.application.NotFoundException;
+import com.releasy.application.shared.ConflictException;
+import com.releasy.application.shared.InvalidRequestException;
+import com.releasy.application.shared.NotFoundException;
 import com.releasy.application.github.GithubConnectionService;
 import com.releasy.application.port.GithubGateway;
 import com.releasy.application.port.GithubGateway.Commit;

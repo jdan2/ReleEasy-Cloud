@@ -1,12 +1,12 @@
 package com.releasy.application.github;
 
-import com.releasy.application.ConflictException;
-import com.releasy.application.InvalidRequestException;
+import com.releasy.application.shared.ConflictException;
+import com.releasy.application.shared.InvalidRequestException;
 import com.releasy.application.port.GithubApiException;
 import com.releasy.application.port.GithubGateway;
 import com.releasy.domain.tenant.ConnectionStatus;
 import com.releasy.domain.tenant.Tenant;
-import com.releasy.infrastructure.memory.InMemoryTenantRepository;
+import com.releasy.infrastructure.adapters.memory.InMemoryTenantRepository;
 import com.releasy.support.MutableClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
