@@ -1,0 +1,83 @@
+version: 0.2
+
+# -----------------------------------------------------------------------------
+# Fase de construccion (proyecto CodeBuild releasy-build).
+#
+# Step Functions arranca este build con las variables del DeploymentRequest. Clona el
+# repositorio del cliente en el commit indicado (con el token de la GitHub App), construye
+# segun la plantilla y, si la plantilla tiene backend, publica la imagen Docker en el ECR
+# de la cuenta del cliente (al que se accede asumiendo ReleEasyDeployRole).
+#
+# Variables de entorno (las inyecta la maquina de estados):
+#   RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID, TENANT_ROLE_ARN, EXTERNAL_ID,
+#   REPOSITORY (owner/repo), BRANCH, COMMIT_SHA, TEMPLATE_ID
+# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET
+# Secreto: GITHUB_TOKEN (token de instalacion de la GitHub App, desde Secrets Manager)
+# -----------------------------------------------------------------------------
+
+env:
+  shell: bash
+  # El token de la GitHub App se inyecta desde Secrets Manager (configurado en el proyecto).
+  # secrets-manager:
+  #   GITHUB_TOKEN: releasy/github-app-token
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+      java: corretto21
+    commands:
+      - echo "Preparando el build del release $RELEASE_ID (plantilla $TEMPLATE_ID)"
+
+  pre_build:
+    commands:
+      # Asumir el rol de despliegue en la cuenta del cliente (con External ID).
+      - |
+        CREDS=$(aws sts assume-role \
+          --role-arn "$TENANT_ROLE_ARN" \
+          --role-session-name "releasy-build-$RELEASE_ID" \
+          --external-id "$EXTERNAL_ID" \
+          --query 'Credentials' --output json)
+        export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.AccessKeyId')
+        export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.SecretAccessKey')
+        export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.SessionToken')
+      # Clonar el repositorio del cliente en el commit exacto, con el token de la GitHub App.
+      - git clone "https://x-access-token:$GITHUB_TOKEN@github.com/$REPOSITORY.git" repo
+      - cd repo && git checkout "$COMMIT_SHA" && cd ..
+
+  build:
+    commands:
+      # Construir el front si la plantilla lo incluye.
+      - |
+        if [ "$TEMPLATE_ID" = "angular-static" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          echo "== Build del front Angular =="
+          (cd repo/frontend && npm ci && npm run build)
+        fi
+      # Construir el backend y la imagen Docker si la plantilla lo incluye.
+      - |
+        if [ "$TEMPLATE_ID" = "springboot-api" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          echo "== Build del backend Spring Boot =="
+          (cd repo/backend && ./mvnw -B -ntp verify)
+
+          # Si el repo no trae Dockerfile, se usa una imagen base de Java 21.
+          if [ ! -f repo/backend/Dockerfile ]; then
+            cat > repo/backend/Dockerfile <<'EOF'
+        FROM eclipse-temurin:21-jre
+        WORKDIR /app
+        COPY target/*.jar app.jar
+        EXPOSE 8080
+        ENTRYPOINT ["java","-jar","/app/app.jar"]
+        EOF
+          fi
+
+          ECR_REPO="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/releasy-$TENANT_ID-$APP_NAME"
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          docker build -t "$ECR_REPO:$COMMIT_SHA" -t "$ECR_REPO:latest" repo/backend
+          docker push "$ECR_REPO:$COMMIT_SHA"
+          docker push "$ECR_REPO:latest"
+        fi
+
+  post_build:
+    commands:
+      - echo "Build del release $RELEASE_ID terminado."

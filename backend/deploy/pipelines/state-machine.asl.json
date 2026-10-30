@@ -1,0 +1,69 @@
+{
+  "Comment": "Despliegue de un release de ReleEasy: build -> deploy. Copia canonica de la definicion que platform/stepfunctions.tf genera con jsonencode. La entrada de la ejecucion es el DeploymentRequest serializado por el backend.",
+  "StartAt": "Build",
+  "States": {
+    "Build": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::codebuild:startBuild.sync",
+      "Parameters": {
+        "ProjectName": "releasy-build",
+        "EnvironmentVariablesOverride": [
+          { "Name": "RELEASE_ID", "Value.$": "$.releaseId" },
+          { "Name": "TENANT_ID", "Value.$": "$.tenantId" },
+          { "Name": "APP_ID", "Value.$": "$.appId" },
+          { "Name": "APP_NAME", "Value.$": "$.appName" },
+          { "Name": "ACCOUNT_ID", "Value.$": "$.accountId" },
+          { "Name": "TENANT_ROLE_ARN", "Value.$": "$.tenantRoleArn" },
+          { "Name": "EXTERNAL_ID", "Value.$": "$.externalId" },
+          { "Name": "REPOSITORY", "Value.$": "$.repository" },
+          { "Name": "BRANCH", "Value.$": "$.branch" },
+          { "Name": "COMMIT_SHA", "Value.$": "$.commitSha" },
+          { "Name": "TEMPLATE_ID", "Value.$": "$.templateId" }
+        ]
+      },
+      "ResultPath": "$.buildResult",
+      "Next": "Deploy",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "Failed"
+        }
+      ]
+    },
+    "Deploy": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::codebuild:startBuild.sync",
+      "Parameters": {
+        "ProjectName": "releasy-deploy",
+        "EnvironmentVariablesOverride": [
+          { "Name": "RELEASE_ID", "Value.$": "$.releaseId" },
+          { "Name": "TENANT_ID", "Value.$": "$.tenantId" },
+          { "Name": "APP_ID", "Value.$": "$.appId" },
+          { "Name": "APP_NAME", "Value.$": "$.appName" },
+          { "Name": "ACCOUNT_ID", "Value.$": "$.accountId" },
+          { "Name": "TENANT_ROLE_ARN", "Value.$": "$.tenantRoleArn" },
+          { "Name": "EXTERNAL_ID", "Value.$": "$.externalId" },
+          { "Name": "TEMPLATE_ID", "Value.$": "$.templateId" }
+        ]
+      },
+      "ResultPath": "$.deployResult",
+      "Next": "Succeeded",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "Failed"
+        }
+      ]
+    },
+    "Succeeded": {
+      "Type": "Succeed"
+    },
+    "Failed": {
+      "Type": "Fail",
+      "Error": "DeploymentFailed",
+      "Cause": "El build o el deploy del release fallaron; el estado FAILED lo escribe el propio pipeline."
+    }
+  }
+}

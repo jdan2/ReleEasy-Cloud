@@ -1,0 +1,97 @@
+version: 0.2
+
+# -----------------------------------------------------------------------------
+# Fase de despliegue (proyecto CodeBuild releasy-deploy).
+#
+# Ejecuta terraform apply de la plantilla en la cuenta del cliente (asumiendo
+# ReleEasyDeployRole), sube el front a S3, invalida CloudFront y escribe el estado del
+# release en DynamoDB. El estado FAILED se escribe tambien si el apply falla.
+#
+# Variables de la maquina de estados: RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID,
+#   TENANT_ROLE_ARN, EXTERNAL_ID, TEMPLATE_ID
+# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET, RELEASES_TABLE, APPS_TABLE
+# -----------------------------------------------------------------------------
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      - echo "Despliegue del release $RELEASE_ID (plantilla $TEMPLATE_ID)"
+      # Terraform en la imagen de CodeBuild.
+      - |
+        TF_VERSION=1.11.2
+        curl -fsSL -o /tmp/tf.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+        unzip -o /tmp/tf.zip -d /usr/local/bin
+
+  pre_build:
+    commands:
+      # El estado RUNNING ya lo marco el backend al crear el release; aqui se despliega.
+      # Asumir el rol del cliente para el apply.
+      - |
+        CREDS=$(aws sts assume-role \
+          --role-arn "$TENANT_ROLE_ARN" \
+          --role-session-name "releasy-deploy-$RELEASE_ID" \
+          --external-id "$EXTERNAL_ID" \
+          --query 'Credentials' --output json)
+        export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.AccessKeyId')
+        export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.SecretAccessKey')
+        export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.SessionToken')
+
+  build:
+    commands:
+      - cd "deploy/templates/$TEMPLATE_ID"
+      # Estado remoto por aplicacion en el bucket de la plataforma.
+      # Nota: el backend S3 se autentica con las credenciales de la PLATAFORMA, no con las
+      # asumidas; el apply de recursos usa las asumidas (provider). Se resuelve pasando el
+      # perfil/credenciales de plataforma al backend y las asumidas al provider (AWS_PROFILE
+      # para el backend o un bloque assume_role en el provider). Aqui se documenta el init.
+      - |
+        terraform init -input=false \
+          -backend-config="bucket=$STATE_BUCKET" \
+          -backend-config="key=tenants/$TENANT_ID/$APP_ID/terraform.tfstate" \
+          -backend-config="region=$AWS_REGION"
+      - |
+        IMAGE="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/releasy-$TENANT_ID-$APP_NAME:$COMMIT_SHA"
+        terraform apply -input=false -auto-approve \
+          -var="app_name=$APP_NAME" \
+          -var="tenant_slug=$TENANT_ID" \
+          -var="region=$AWS_REGION" \
+          -var="container_image=$IMAGE"
+      # Recoger los outputs (URL, bucket y distribucion si hay front).
+      - export APP_URL=$(terraform output -raw url)
+      - export SITE_BUCKET=$(terraform output -raw bucket_name 2>/dev/null || echo "")
+      - export DIST_ID=$(terraform output -raw distribution_id 2>/dev/null || echo "")
+      # Si la plantilla tiene front, subir el build a S3 e invalidar CloudFront.
+      - |
+        if [ -n "$SITE_BUCKET" ]; then
+          DIST_DIR=$(find "$CODEBUILD_SRC_DIR/repo/frontend/dist" -maxdepth 2 -name browser -type d | head -n1)
+          aws s3 sync "$DIST_DIR" "s3://$SITE_BUCKET" --delete
+          [ -n "$DIST_ID" ] && aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
+        fi
+
+  post_build:
+    commands:
+      # Escribir el estado final del release en DynamoDB (con las credenciales de la plataforma).
+      - |
+        unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+        NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
+          STATUS="SUCCEEDED"
+          aws dynamodb update-item \
+            --table-name "$RELEASES_TABLE" \
+            --key "{\"appId\":{\"S\":\"$APP_ID\"},\"releaseId\":{\"S\":\"$RELEASE_ID\"}}" \
+            --update-expression "SET #s = :s, #u = :u, updatedAt = :t" \
+            --expression-attribute-names '{"#s":"status","#u":"url"}' \
+            --expression-attribute-values "{\":s\":{\"S\":\"$STATUS\"},\":u\":{\"S\":\"$APP_URL\"},\":t\":{\"S\":\"$NOW\"}}"
+        else
+          STATUS="FAILED"
+          aws dynamodb update-item \
+            --table-name "$RELEASES_TABLE" \
+            --key "{\"appId\":{\"S\":\"$APP_ID\"},\"releaseId\":{\"S\":\"$RELEASE_ID\"}}" \
+            --update-expression "SET #s = :s, errorMessage = :e, updatedAt = :t" \
+            --expression-attribute-names '{"#s":"status"}' \
+            --expression-attribute-values "{\":s\":{\"S\":\"$STATUS\"},\":e\":{\"S\":\"El despliegue fallo; revisa los logs de CodeBuild.\"},\":t\":{\"S\":\"$NOW\"}}"
+        fi
+      - echo "Release $RELEASE_ID -> $STATUS"
