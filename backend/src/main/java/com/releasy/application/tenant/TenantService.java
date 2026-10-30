@@ -1,6 +1,6 @@
 package com.releasy.application.tenant;
 
-import com.releasy.application.NotFoundException;
+import com.releasy.application.shared.NotFoundException;
 import com.releasy.domain.shared.Ids;
 import com.releasy.domain.tenant.Tenant;
 import com.releasy.domain.tenant.TenantRepository;

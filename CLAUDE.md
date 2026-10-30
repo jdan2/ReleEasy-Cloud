@@ -20,8 +20,8 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 | 1. Estructura y dependencias | ✅ |
 | 2. Backend | ✅ **Nuevo alcance completo** (D-24 a D-26; 62 pruebas): login con JWT, GitHub App **real y probada** (o mock), y AWS, STS y despliegues **simulados**. Falta: AWS real (Terraform) y webhook con URL pública. |
 | 3. Portal | ✅ **Conectado a la API** (`mockApi: false` desde D-25; el modo demo sigue disponible): vistas de cliente y de admin, registro, conexiones AWS y GitHub (con `/portal/github/callback`), catálogo, formulario dinámico, estimador de costes y releases. 53 pruebas Vitest. |
-| 4. Terraform y pipelines | ⏳ Sin empezar (`backend/deploy/*` vacías). Hay que hacerlo **con el nuevo alcance**. |
-| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-26), `backend/docs/github-app.md`, `frontend/README.md`, `SESION-Y-USUARIOS.md` y la memoria `TFM.docx` (capítulo 4 escrito) |
+| 4. Terraform y pipelines | ✅ **Completa y validada** (sin `apply`): `bootstrap/releasy-deploy-role.yaml` (rol del cliente, D-28); las **tres plantillas** `angular-static` (D-29), `springboot-api` (D-30) y `angular-springboot` (D-31) con módulos `network`/`frontend`/`backend`/`observability`; `platform/` (estado S3, 4 tablas DynamoDB, CodeBuild, Step Functions, IAM; D-32); y `pipelines/` (`buildspec-build.yml`, `buildspec-deploy.yml`, `state-machine.asl.json`; D-33). **Falta solo** activar `RELEASY_AWS_MODE=real` + un `apply` controlado contra AWS para probarlo en vivo (ver limitaciones en D-33). |
+| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-33), `backend/docs/github-app.md`, `backend/deploy/README.md`, `frontend/README.md`, `SESION-Y-USUARIOS.md` y la memoria `TFM.docx` (capítulo 4 escrito) |
 
 ## Dónde retomar (sesión del 2026-10-24)
 
@@ -79,6 +79,17 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
   `export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"`
   y para Node: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 24.22.0`.
 - Los comandos Bash que se lanzan en paralelo comparten el directorio de trabajo: usar rutas absolutas.
+
+### Arranque en Windows (PC del autor, sesión del 2026-10-26)
+
+Este equipo es Windows, no macOS; el arranque difiere del bloque anterior.
+- **JDK 21** en `C:\Users\juand\.jdks\ms-21.0.11` (el `java` por defecto es un 17 que **no compila** el backend). En IntelliJ: *Project Structure* con SDK 21 y, en la run config, **perfil `mock-fast`** (campo *Active profiles* o `SPRING_PROFILES_ACTIVE=mock-fast`); sin ese perfil no se crea el usuario demo y el login da 401. El `.env` lo carga el plugin **EnvFile** (IntelliJ no lo lee solo); en VS Code lo hace el `launch.json`.
+- Por terminal: `$env:JAVA_HOME="C:\Users\juand\.jdks\ms-21.0.11"; .\mvnw.cmd test` (62 pruebas en verde).
+- **Node 24.22.0** vía nvm-windows; `node -v` debe decir v24 (si no, `nvm use 24.22.0` en una terminal nueva). Angular 22 **rechaza** Node < 22.22.3.
+- **PowerShell bloquea `*.ps1`** (ExecutionPolicy): usar `npm.cmd` / `npx.cmd` / `.\mvnw.cmd`, o los binarios de `node_modules\.bin`.
+- Si el 8080 queda ocupado tras "detener" en IntelliJ, es un proceso `java` colgado: hay que terminarlo.
+- **AWS CLI** instalado (`C:\Program Files\Amazon\AWSCLIV2\aws.exe`), con credenciales configuradas. Sirve para `aws cloudformation validate-template` (solo valida, no crea nada).
+- El `.env` del backend está en `backend\.env` y la clave de la GitHub App en `C:\Users\juand\Documents\Maestria\TFM\github-app.pem` (fuera del repo); `RELEASY_GITHUB_PRIVATE_KEY_PATH` apunta ahí.
 
 ## Portal: `frontend/`
 

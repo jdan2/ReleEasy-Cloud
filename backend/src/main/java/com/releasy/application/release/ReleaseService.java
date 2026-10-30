@@ -1,6 +1,6 @@
 package com.releasy.application.release;
 
-import com.releasy.application.NotFoundException;
+import com.releasy.application.shared.NotFoundException;
 import com.releasy.domain.app.App;
 import com.releasy.domain.app.AppRepository;
 import com.releasy.domain.release.Release;

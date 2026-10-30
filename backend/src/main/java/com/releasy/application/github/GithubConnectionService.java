@@ -1,8 +1,8 @@
 package com.releasy.application.github;
 
-import com.releasy.application.ConflictException;
-import com.releasy.application.InvalidRequestException;
-import com.releasy.application.NotFoundException;
+import com.releasy.application.shared.ConflictException;
+import com.releasy.application.shared.InvalidRequestException;
+import com.releasy.application.shared.NotFoundException;
 import com.releasy.application.port.GithubApiException;
 import com.releasy.application.port.GithubGateway;
 import com.releasy.application.port.GithubGateway.Installation;
