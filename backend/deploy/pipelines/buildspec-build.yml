@@ -11,7 +11,7 @@ version: 0.2
 # Variables de entorno (las inyecta la maquina de estados):
 #   RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID, TENANT_ROLE_ARN, EXTERNAL_ID,
 #   REPOSITORY (owner/repo), BRANCH, COMMIT_SHA, TEMPLATE_ID
-# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET
+# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET, RELEASES_TABLE
 # Secreto: GITHUB_TOKEN (token de instalacion de la GitHub App, desde Secrets Manager)
 # -----------------------------------------------------------------------------
 
@@ -80,4 +80,21 @@ phases:
 
   post_build:
     commands:
-      - echo "Build del release $RELEASE_ID terminado."
+      # Si la construccion fallo, marcar el release como FAILED en DynamoDB (con las
+      # credenciales de la plataforma, no las asumidas del cliente). Asi un fallo de
+      # compilacion no deja el release colgado en RUNNING; la fase de deploy no llega a
+      # ejecutarse. Si el build fue correcto, el estado lo gestiona despues el deploy.
+      - |
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" != "1" ]; then
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          aws dynamodb update-item \
+            --table-name "$RELEASES_TABLE" \
+            --key "{\"appId\":{\"S\":\"$APP_ID\"},\"releaseId\":{\"S\":\"$RELEASE_ID\"}}" \
+            --update-expression "SET #s = :s, errorMessage = :e, updatedAt = :t" \
+            --expression-attribute-names '{"#s":"status"}' \
+            --expression-attribute-values "{\":s\":{\"S\":\"FAILED\"},\":e\":{\"S\":\"La construccion fallo; revisa los logs de CodeBuild.\"},\":t\":{\"S\":\"$NOW\"}}"
+          echo "Build del release $RELEASE_ID: FAILED"
+        else
+          echo "Build del release $RELEASE_ID terminado."
+        fi

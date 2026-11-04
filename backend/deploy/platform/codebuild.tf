@@ -28,6 +28,11 @@ resource "aws_codebuild_project" "build" {
       name  = "STATE_BUCKET"
       value = aws_s3_bucket.state.bucket
     }
+    # La tabla de releases, para que el build pueda marcar FAILED si la construccion falla.
+    environment_variable {
+      name  = "RELEASES_TABLE"
+      value = aws_dynamodb_table.releases.name
+    }
   }
 
   source {
