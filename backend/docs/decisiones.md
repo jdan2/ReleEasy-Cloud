@@ -365,3 +365,13 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 - **Portal:** el backend expone `aws.roleTemplateUrl` y `aws.region` en el tenant (propiedades `releasy.aws.role-template-url`, variable `RELEASY_AWS_ROLE_TEMPLATE_URL`, y la región ya existente). El front arma el enlace con la consola regional (`https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/stacks/quickcreate`) y, si la URL viene vacía, muestra un aviso en lugar del botón.
 - **Coste/riesgo:** un bucket con un único objeto de pocos KB; la exposición pública se limita a una plantilla ya publicada en el repositorio. `force_destroy` permite su destrucción con `terraform destroy`.
 - **Verificación:** `terraform fmt` y `validate` correctos; no se ejecutó `apply`. Tests de API y del portal correctos.
+
+## D-36 · Redespliegue manual
+
+- **Fecha:** 2026-11-08.
+- **Contexto:** el webhook de GitHub no llega en local y, si el primer despliegue falla (p. ej. `UnknownHostException` al arrancar Step Functions), no había forma de reintentarlo sin hacer un commit nuevo.
+- **Decisión:** `POST /api/apps/{id}/releases` (propietario o administrador) lanza el último commit de la rama con `GithubGateway.branchHead` y `ReleaseLauncher.launch`, la misma lógica que el primer despliegue (`AppService.launchHead`). Responde `201` con el `Release` creado. Errores: `404` si la app no es visible, `409` si falta la conexión con AWS o con GitHub, `400` si la rama no tiene commits y `409` si el último commit ya tiene un release en curso o correcto.
+- **Idempotencia:** es la de `ReleaseLauncher` (por commit). Un commit con release `FAILED` se puede relanzar; con `PENDING`, `RUNNING` o `SUCCEEDED`, no. Si el despliegue no llega a arrancar, el release se devuelve igualmente (`201`) en estado `FAILED` con su `errorMessage`, y se puede reintentar.
+- **Sin `force`:** no se implementa un parámetro para forzar un commit ya desplegado con éxito: rompería la idempotencia compartida con el webhook. Para desplegar otra vez basta un commit nuevo.
+- **Portal:** botón "Redesplegar" en el detalle de la app (deshabilitado mientras se envía, con el error de la API y refresco del historial). El modo demo lo simula con `MockBackend.redeploy`.
+- **Verificación:** `AppServiceRedeployTest` (8 casos) y `app-detail.page.spec.ts` (2 casos nuevos).

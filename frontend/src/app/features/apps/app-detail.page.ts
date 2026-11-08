@@ -41,6 +41,8 @@ export class AppDetailPage implements OnInit {
   protected readonly releases = signal<Release[]>([]);
   protected readonly loadError = signal<string | null>(null);
   protected readonly lastUpdated = signal<Date | null>(null);
+  protected readonly redeploying = signal(false);
+  protected readonly redeployMessage = signal<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   protected readonly template = computed(() => {
     const app = this.app();
@@ -71,6 +73,26 @@ export class AppDetailPage implements OnInit {
 
   protected refresh(): void {
     this.load();
+  }
+
+  /** Lanza a mano el despliegue del último commit de la rama y refresca el historial. */
+  protected redeploy(): void {
+    if (this.redeploying()) {
+      return;
+    }
+    this.redeploying.set(true);
+    this.redeployMessage.set(null);
+    this.api.redeploy(this.appId()).subscribe({
+      next: () => {
+        this.redeployMessage.set({ kind: 'ok', text: 'Despliegue lanzado' });
+        this.redeploying.set(false);
+        this.load();
+      },
+      error: (e: unknown) => {
+        this.redeployMessage.set({ kind: 'error', text: describeHttpError(e) });
+        this.redeploying.set(false);
+      },
+    });
   }
 
   /** Solo en modo demo: simula el webhook de un merge a la rama de la aplicación. */

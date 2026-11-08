@@ -106,7 +106,7 @@ Este equipo es Windows, no macOS; el arranque difiere del bloque anterior.
     - `GET` y `POST /api/me/apps` (`{name,templateId,repository,branch,options,usage}`)
   - Catálogo: `GET /api/templates` y `GET /api/templates/{id}`.
   - Administrador: `GET /api/tenants`, `GET /api/tenants/{id}` y `GET /api/tenants/{id}/apps`.
-  - App (propietario o admin): `GET /api/apps/{id}` y `GET /api/apps/{id}/releases`.
+  - App (propietario o admin): `GET /api/apps/{id}`, `GET /api/apps/{id}/releases` y `POST /api/apps/{id}/releases` (redespliegue manual, D-36).
   - `App{id,tenantId,name,templateId,repository,branch,options,usage,url,createdAt,updatedAt}`. Errores en formato ProblemDetail.
 - **Plantillas (D-22):** `core/templates/template-catalog.ts` define de forma declarativa las 3 plantillas, con grupos de opciones (`toggle`, `select`, `number`, `text` y `keyvalue`, más `visibleWhen`), campos y perfiles de uso. Incluye `validateOptions` (la API lo replica en `TemplateCatalog`, con los mismos mensajes) y `describeOptions`.
 - **Costes (D-20):** precios de referencia de eu-west-1 en `core/pricing/aws-prices.ts` y la función pura `estimateMonthlyCost(template, options, usage)` en `core/pricing/cost-estimator.ts`. La cuota simulada es de 9 USD por app y mes.
