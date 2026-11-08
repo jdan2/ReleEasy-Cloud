@@ -37,9 +37,13 @@ Los scripts que CodeBuild ejecuta, orquestados por la maquina de estados de la p
 
 - **`buildspec-build.yml`:** asume `ReleEasyDeployRole` en la cuenta del cliente, clona el
   repositorio en el commit indicado (token de la GitHub App), construye el front y/o el
-  backend segun `templateId` y publica la imagen en el ECR del cliente.
-- **`buildspec-deploy.yml`:** `terraform init` con estado por app
-  (`tenants/<tenantId>/<appId>/terraform.tfstate`), `apply` de la plantilla, subida del
+  backend segun `templateId` y publica la imagen en el ECR del cliente. Si hay front,
+  comprime el dist y lo sube a `s3://<STATE_BUCKET>/artifacts/<tenantId>/<appId>/<releaseId>/dist.tgz`
+  (variable `DIST_ARTIFACT_KEY`, que calcula la maquina de estados).
+- **`buildspec-deploy.yml`:** clona las plantillas del repo publico de ReleEasy
+  (`RELEASEY_REPO_URL`, `RELEASEY_REPO_BRANCH`; variables de plataforma `releasy_repo_url` y
+  `releasy_repo_branch`), descarga el dist de `DIST_ARTIFACT_KEY`, `terraform init` con estado
+  por app (`tenants/<tenantId>/<appId>/terraform.tfstate`), `apply` de la plantilla, subida del
   front a S3, invalidacion de CloudFront y escritura del estado del release en DynamoDB
   (tambien `FAILED` si algo falla).
 - **`state-machine.asl.json`:** copia canonica de la definicion que `platform/stepfunctions.tf`
