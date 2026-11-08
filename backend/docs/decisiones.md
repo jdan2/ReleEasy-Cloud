@@ -375,3 +375,18 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 - **Sin `force`:** no se implementa un parámetro para forzar un commit ya desplegado con éxito: rompería la idempotencia compartida con el webhook. Para desplegar otra vez basta un commit nuevo.
 - **Portal:** botón "Redesplegar" en el detalle de la app (deshabilitado mientras se envía, con el error de la API y refresco del historial). El modo demo lo simula con `MockBackend.redeploy`.
 - **Verificación:** `AppServiceRedeployTest` (8 casos) y `app-detail.page.spec.ts` (2 casos nuevos).
+
+## D-37 · Despliegue entre cuentas AWS: credenciales de plataforma y `assume_role` en el provider
+
+- **Fecha:** 2026-11-09.
+- **Contexto:** el deploy exportaba en `pre_build` las credenciales asumidas del cliente para todo el build. `terraform init` usaba entonces esas credenciales contra el backend S3 del bucket de estado (cuenta de la plataforma) y fallaba con 403 en `HeadObject` cuando el cliente está en otra cuenta (plataforma `053214907144`, cliente `082335234303`).
+- **Decisión:**
+  - El entorno del build conserva **siempre las credenciales de la plataforma** (rol `releasy-codebuild`): backend S3 de Terraform, lectura y escritura de artefactos en el bucket de estado y escritura final en DynamoDB.
+  - Terraform asume el rol del cliente **solo en los providers `aws`** con un bloque `assume_role` (`role_arn = var.tenant_role_arn`, `external_id = var.external_id`, `session_name = "releasy-terraform"`), incluido el alias `us_east_1`. Es un `dynamic "assume_role"` que solo se activa si `tenant_role_arn != ""`, así `validate` y los usos locales siguen funcionando. Los módulos heredan los providers de la plantilla, por lo que no cambian.
+  - Variables nuevas en las tres plantillas: `tenant_role_arn` y `external_id` (`sensitive`). El buildspec las pasa con `TF_VAR_tenant_role_arn` y `TF_VAR_external_id` (entorno, no `-var`) para que no queden en el log.
+  - Los comandos de CLI sobre recursos del cliente (`s3 sync` del front, `cloudfront create-invalidation`, login y push al ECR del build) asumen el rol en un **subshell**; las credenciales asumidas no salen de él.
+  - `pre_build` de ambos buildspec solo comprueba que el rol es asumible (falla pronto) y descarta la salida.
+- **Multi-cuenta:** funciona con cuentas distintas y también si plataforma y cliente son la misma cuenta.
+- **IAM:** sin cambios. `iam.tf` ya permite `sts:AssumeRole` sobre `arn:aws:iam::*:role/ReleEasyDeployRole`; la confianza del rol del cliente (`releasy-deploy-role.yaml`) exige `sts:ExternalId`. No hace falta `sts:TagSession` porque el provider no pasa tags de sesión.
+- **Pendiente (orden ECR):** `buildspec-build.yml` empuja la imagen al ECR del cliente antes de que Terraform cree el repositorio (módulo `backend`), así que el primer push de las plantillas con backend puede fallar. No se corrige aquí; hay que crear el repo antes (p. ej. un paso previo de Terraform) o mover el push tras el apply.
+- **Verificación:** `terraform fmt -recursive`, `init -backend=false` y `validate` por plantilla; YAML de los buildspec parseable; `bash -n` de los scripts embebidos. No se ejecutó `apply`.

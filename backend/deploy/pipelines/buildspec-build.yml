@@ -6,7 +6,8 @@ version: 0.2
 # Step Functions arranca este build con las variables del DeploymentRequest. Clona el
 # repositorio del cliente en el commit indicado (con el token de la GitHub App), construye
 # segun la plantilla y, si la plantilla tiene backend, publica la imagen Docker en el ECR
-# de la cuenta del cliente (al que se accede asumiendo ReleEasyDeployRole).
+# de la cuenta del cliente (al que se accede asumiendo ReleEasyDeployRole en un subshell).
+# El entorno del build mantiene siempre las credenciales de la plataforma (D-37).
 #
 # Variables de entorno (las inyecta la maquina de estados):
 #   RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID, TENANT_ROLE_ARN, EXTERNAL_ID,
@@ -33,16 +34,16 @@ phases:
 
   pre_build:
     commands:
-      # Asumir el rol de despliegue en la cuenta del cliente (con External ID).
+      # El entorno conserva las credenciales de la plataforma (bucket de estado, DynamoDB).
+      # El rol del cliente solo se asume en un subshell para el push al ECR (fase build).
+      # Aqui solo se comprueba que es asumible (con External ID) para fallar pronto.
       - |
-        CREDS=$(aws sts assume-role \
+        aws sts assume-role \
           --role-arn "$TENANT_ROLE_ARN" \
-          --role-session-name "releasy-build-$RELEASE_ID" \
+          --role-session-name "releasy-build-check-$RELEASE_ID" \
           --external-id "$EXTERNAL_ID" \
-          --query 'Credentials' --output json)
-        export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.AccessKeyId')
-        export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.SecretAccessKey')
-        export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.SessionToken')
+          --query 'Credentials.Expiration' --output text > /dev/null
+        echo "Rol del cliente asumible: $TENANT_ROLE_ARN"
       # Clonar el repositorio del cliente en el commit exacto, con el token de la GitHub App.
       - git clone "https://x-access-token:$GITHUB_TOKEN@github.com/$REPOSITORY.git" repo
       - cd repo && git checkout "$COMMIT_SHA" && cd ..
@@ -70,9 +71,9 @@ phases:
             exit 1
           fi
           tar -C "$DIST_DIR" -czf /tmp/dist.tgz .
-          # El bucket de estado es de la plataforma: subir sin las credenciales asumidas del cliente.
-          ( unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-            aws s3 cp /tmp/dist.tgz "s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY" --only-show-errors )
+          # El bucket de estado es de la plataforma: se sube con las credenciales del entorno
+          # (plataforma), nunca con las del cliente.
+          aws s3 cp /tmp/dist.tgz "s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY" --only-show-errors
           echo "Dist publicado en s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY"
         fi
       # Construir el backend y la imagen Docker si la plantilla lo incluye.
@@ -93,17 +94,30 @@ phases:
           fi
 
           ECR_REPO="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/releasy-$TENANT_ID-$APP_NAME"
-          aws ecr get-login-password --region "$AWS_REGION" \
-            | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-          docker build -t "$ECR_REPO:$COMMIT_SHA" -t "$ECR_REPO:latest" repo/backend
-          docker push "$ECR_REPO:$COMMIT_SHA"
-          docker push "$ECR_REPO:latest"
+          # El ECR es de la cuenta del cliente: las credenciales asumidas se exportan SOLO en
+          # este subshell; despues el entorno sigue siendo el de la plataforma.
+          (
+            CREDS=$(aws sts assume-role \
+              --role-arn "$TENANT_ROLE_ARN" \
+              --role-session-name "releasy-build-$RELEASE_ID" \
+              --external-id "$EXTERNAL_ID" \
+              --query 'Credentials' --output json)
+            export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.AccessKeyId')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.SecretAccessKey')
+            export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.SessionToken')
+            unset CREDS
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+            docker build -t "$ECR_REPO:$COMMIT_SHA" -t "$ECR_REPO:latest" repo/backend
+            docker push "$ECR_REPO:$COMMIT_SHA"
+            docker push "$ECR_REPO:latest"
+          )
         fi
 
   post_build:
     commands:
       # Si la construccion fallo, marcar el release como FAILED en DynamoDB (con las
-      # credenciales de la plataforma, no las asumidas del cliente). Asi un fallo de
+      # credenciales de la plataforma, que son las del entorno). Asi un fallo de
       # compilacion no deja el release colgado en RUNNING; la fase de deploy no llega a
       # ejecutarse. Si el build fue correcto, el estado lo gestiona despues el deploy.
       - |

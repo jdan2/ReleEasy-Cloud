@@ -35,9 +35,10 @@ deploy/
 
 Los scripts que CodeBuild ejecuta, orquestados por la maquina de estados de la plataforma:
 
-- **`buildspec-build.yml`:** asume `ReleEasyDeployRole` en la cuenta del cliente, clona el
+- **`buildspec-build.yml`:** clona el
   repositorio en el commit indicado (token de la GitHub App), construye el front y/o el
-  backend segun `templateId` y publica la imagen en el ECR del cliente. Si hay front,
+  backend segun `templateId` y publica la imagen en el ECR del cliente (asumiendo
+  `ReleEasyDeployRole` solo en un subshell). Si hay front,
   comprime el dist y lo sube a `s3://<STATE_BUCKET>/artifacts/<tenantId>/<appId>/<releaseId>/dist.tgz`
   (variable `DIST_ARTIFACT_KEY`, que calcula la maquina de estados).
 - **`buildspec-deploy.yml`:** clona las plantillas del repo publico de ReleEasy
@@ -46,6 +47,10 @@ Los scripts que CodeBuild ejecuta, orquestados por la maquina de estados de la p
   por app (`tenants/<tenantId>/<appId>/terraform.tfstate`), `apply` de la plantilla, subida del
   front a S3, invalidacion de CloudFront y escritura del estado del release en DynamoDB
   (tambien `FAILED` si algo falla).
+- **Credenciales (D-37):** el entorno del build es siempre el de la plataforma (backend S3,
+  artefactos, DynamoDB). Terraform asume `ReleEasyDeployRole` en los providers `aws`
+  (`assume_role` con `TF_VAR_tenant_role_arn` y `TF_VAR_external_id`), y `s3 sync`,
+  CloudFront y ECR lo asumen en un subshell. Funciona con cuentas distintas o la misma.
 - **`state-machine.asl.json`:** copia canonica de la definicion que `platform/stepfunctions.tf`
   genera; `build -> deploy -> estado final`, con `Catch` hacia `Failed`.
 
