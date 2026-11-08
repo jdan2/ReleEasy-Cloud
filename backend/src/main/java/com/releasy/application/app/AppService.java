@@ -9,10 +9,12 @@ import com.releasy.application.port.GithubGateway;
 import com.releasy.application.port.GithubGateway.Commit;
 import com.releasy.application.port.GithubGateway.Repository;
 import com.releasy.application.release.ReleaseLauncher;
+import com.releasy.application.release.ReleaseService;
 import com.releasy.application.template.TemplateCatalog;
 import com.releasy.application.tenant.TenantService;
 import com.releasy.domain.app.App;
 import com.releasy.domain.app.AppRepository;
+import com.releasy.domain.release.Release;
 import com.releasy.domain.shared.Ids;
 import com.releasy.domain.tenant.Tenant;
 import org.slf4j.Logger;
@@ -41,16 +43,18 @@ public class AppService {
     private final TemplateCatalog catalog;
     private final GithubGateway github;
     private final ReleaseLauncher launcher;
+    private final ReleaseService releaseService;
     private final AppUrlPolicy urlPolicy;
     private final Clock clock;
 
     public AppService(AppRepository apps, TenantService tenantService, TemplateCatalog catalog, GithubGateway github,
-                      ReleaseLauncher launcher, AppUrlPolicy urlPolicy, Clock clock) {
+                      ReleaseLauncher launcher, ReleaseService releaseService, AppUrlPolicy urlPolicy, Clock clock) {
         this.apps = apps;
         this.tenantService = tenantService;
         this.catalog = catalog;
         this.github = github;
         this.launcher = launcher;
+        this.releaseService = releaseService;
         this.urlPolicy = urlPolicy;
         this.clock = clock;
     }
@@ -96,18 +100,43 @@ public class AppService {
         App app = apps.save(new App(Ids.newAppId(), tenantId, name, request.templateId(),
                 repository.fullName().toLowerCase(Locale.ROOT), request.branch(), options,
                 catalog.knownUsage(template, request.usage()), urlPolicy.provisionalUrl(name, tenant.slug()), now, now));
-        deployLatestCommit(app, tenant, installationId, repository.fullName());
+        deployLatestCommit(app, tenant, installationId);
         return app;
     }
 
     /** Primer despliegue. Si GitHub falla, la app queda creada y se desplegará con el siguiente push. */
-    private void deployLatestCommit(App app, Tenant tenant, long installationId, String repository) {
+    private void deployLatestCommit(App app, Tenant tenant, long installationId) {
         try {
-            Optional<Commit> head = github.branchHead(installationId, repository, app.branch());
-            head.ifPresent(commit -> launcher.launch(app, tenant, commit.sha(), commit.message()));
+            launchHead(app, tenant, installationId);
         } catch (RuntimeException e) {
             log.warn("No se pudo lanzar el primer despliegue de la aplicación {}", app.id(), e);
         }
+    }
+
+    /**
+     * Redespliega a mano el último commit de la rama (por si el webhook no llegó o el release falló).
+     * Un commit cuyo release falló se puede relanzar; uno ya en curso o desplegado con éxito, no.
+     */
+    public Release redeploy(String appId) {
+        App app = get(appId);
+        Tenant tenant = tenantService.get(app.tenantId());
+        if (!tenant.aws().isConnected()) {
+            throw new ConflictException("Conecta primero tu cuenta de AWS");
+        }
+        long installationId = GithubConnectionService.requireInstallation(tenant);
+        String releaseId = launchHead(app, tenant, installationId)
+                .orElseThrow(() -> new ConflictException("El último commit de la rama " + app.branch()
+                        + " ya tiene un release en curso o desplegado correctamente. "
+                        + "Haz un commit nuevo para desplegar otra vez."));
+        return releaseService.get(appId, releaseId);
+    }
+
+    /** Lanza el último commit de la rama; vacío si ese commit ya tiene un release que no ha fallado. */
+    private Optional<String> launchHead(App app, Tenant tenant, long installationId) {
+        Commit head = github.branchHead(installationId, app.repository(), app.branch())
+                .orElseThrow(() -> new InvalidRequestException("La rama " + app.branch() + " de "
+                        + app.repository() + " no tiene commits que desplegar"));
+        return launcher.launch(app, tenant, head.sha(), head.message());
     }
 
     public App get(String id) {

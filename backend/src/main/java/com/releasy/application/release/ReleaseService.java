@@ -48,7 +48,7 @@ public class ReleaseService {
         return releases.save(get(appId, releaseId).fail(error, clock.instant()));
     }
 
-    private Release get(String appId, String releaseId) {
+    public Release get(String appId, String releaseId) {
         return releases.findById(appId, releaseId).orElseThrow(() -> new NotFoundException("Release", releaseId));
     }
 
