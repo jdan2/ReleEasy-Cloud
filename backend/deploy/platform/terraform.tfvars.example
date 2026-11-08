@@ -1,0 +1,12 @@
+# Copia este archivo a terraform.tfvars (esta ignorado por git) y ajusta los valores.
+
+region = "us-east-1"
+
+# Nombre unico en todo S3. Debe empezar por "releasy-" porque el rol del cliente
+# (ReleEasyDeployRole) solo puede acceder a buckets con ese prefijo.
+# Sugerencia: releasy-state-<id de tu cuenta de 12 digitos>
+state_bucket_name = "releasy-state-123456789012"
+
+# Opcional: ARN del secreto de Secrets Manager con el token de la GitHub App.
+# No hace falta si el repositorio de prueba es publico.
+# github_token_secret_arn = ""

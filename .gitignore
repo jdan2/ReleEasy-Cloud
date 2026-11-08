@@ -14,6 +14,8 @@ tfplan
 crash.log
 *.tfvars
 !*.tfvars.example
+*_override.tf
+override.tf
 .terraform.tfstate.lock.info
 
 # --- Node / Angular ---
