@@ -35,6 +35,7 @@ resource "aws_sfn_state_machine" "deploy" {
             { "Name" = "BRANCH", "Value.$" = "$.branch" },
             { "Name" = "COMMIT_SHA", "Value.$" = "$.commitSha" },
             { "Name" = "TEMPLATE_ID", "Value.$" = "$.templateId" },
+            { "Name" = "DIST_ARTIFACT_KEY", "Value.$" = "States.Format('artifacts/{}/{}/{}/dist.tgz', $.tenantId, $.appId, $.releaseId)" },
           ]
         }
         ResultPath = "$.buildResult"
@@ -59,6 +60,7 @@ resource "aws_sfn_state_machine" "deploy" {
             { "Name" = "TENANT_ROLE_ARN", "Value.$" = "$.tenantRoleArn" },
             { "Name" = "EXTERNAL_ID", "Value.$" = "$.externalId" },
             { "Name" = "TEMPLATE_ID", "Value.$" = "$.templateId" },
+            { "Name" = "DIST_ARTIFACT_KEY", "Value.$" = "States.Format('artifacts/{}/{}/{}/dist.tgz', $.tenantId, $.appId, $.releaseId)" },
           ]
         }
         ResultPath = "$.deployResult"

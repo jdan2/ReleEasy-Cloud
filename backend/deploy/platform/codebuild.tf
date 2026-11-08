@@ -76,6 +76,15 @@ resource "aws_codebuild_project" "deploy" {
       name  = "APPS_TABLE"
       value = aws_dynamodb_table.apps.name
     }
+    # El deploy es NO_SOURCE: clona las plantillas Terraform de este repo publico (sin secretos).
+    environment_variable {
+      name  = "RELEASEY_REPO_URL"
+      value = var.releasy_repo_url
+    }
+    environment_variable {
+      name  = "RELEASEY_REPO_BRANCH"
+      value = var.releasy_repo_branch
+    }
   }
 
   source {

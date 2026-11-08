@@ -38,7 +38,8 @@ data "aws_iam_policy_document" "codebuild" {
     resources = ["arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/releasy-*"]
   }
 
-  # Estado de Terraform en el bucket de la plataforma.
+  # Bucket de la plataforma: estado de Terraform (tenants/...) y artefactos del build
+  # (artifacts/<tenant>/<app>/<release>/dist.tgz).
   statement {
     sid       = "TerraformState"
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]

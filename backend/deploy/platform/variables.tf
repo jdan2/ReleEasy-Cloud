@@ -25,6 +25,21 @@ variable "github_token_secret_arn" {
   default     = ""
 }
 
+variable "releasy_repo_url" {
+  description = <<-EOT
+    URL del repositorio publico de ReleEasy del que el deploy clona las plantillas Terraform
+    (backend/deploy/templates/<templateId>). Sin credenciales.
+  EOT
+  type        = string
+  default     = "https://github.com/jdan2/ReleEasy-Cloud"
+}
+
+variable "releasy_repo_branch" {
+  description = "Rama del repositorio de ReleEasy que el deploy clona para obtener las plantillas."
+  type        = string
+  default     = "develop"
+}
+
 variable "tags" {
   description = "Etiquetas comunes."
   type        = map(string)

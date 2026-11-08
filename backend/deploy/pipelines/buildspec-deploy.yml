@@ -8,8 +8,13 @@ version: 0.2
 # release en DynamoDB. El estado FAILED se escribe tambien si el apply falla.
 #
 # Variables de la maquina de estados: RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID,
-#   TENANT_ROLE_ARN, EXTERNAL_ID, TEMPLATE_ID
-# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET, RELEASES_TABLE, APPS_TABLE
+#   TENANT_ROLE_ARN, EXTERNAL_ID, TEMPLATE_ID,
+#   DIST_ARTIFACT_KEY (artifacts/<tenantId>/<appId>/<releaseId>/dist.tgz en STATE_BUCKET)
+# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET, RELEASES_TABLE, APPS_TABLE,
+#   RELEASEY_REPO_URL, RELEASEY_REPO_BRANCH (repo publico de ReleEasy del que se clonan las
+#   plantillas; por defecto https://github.com/jdan2/ReleEasy-Cloud y develop)
+# El deploy es NO_SOURCE: en install clona las plantillas y descarga el dist del build con las
+# credenciales de la plataforma, antes de asumir el rol del cliente en pre_build.
 # -----------------------------------------------------------------------------
 
 env:
@@ -24,6 +29,31 @@ phases:
         TF_VERSION=1.11.2
         curl -fsSL -o /tmp/tf.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
         unzip -o /tmp/tf.zip -d /usr/local/bin
+      # El proyecto es NO_SOURCE: clonar el repo publico de ReleEasy para disponer de las
+      # plantillas (los modulos relativos ../modules/* requieren el arbol completo).
+      - |
+        export WORKDIR=$(pwd)
+        git clone --depth 1 --branch "${RELEASEY_REPO_BRANCH:-develop}" \
+          "${RELEASEY_REPO_URL:-https://github.com/jdan2/ReleEasy-Cloud}" "$WORKDIR/releasy-src"
+        export TEMPLATE_DIR="$WORKDIR/releasy-src/backend/deploy/templates/$TEMPLATE_ID"
+        if [ ! -d "$TEMPLATE_DIR" ]; then
+          echo "No existe la plantilla $TEMPLATE_ID en ${RELEASEY_REPO_URL:-https://github.com/jdan2/ReleEasy-Cloud} (${RELEASEY_REPO_BRANCH:-develop})" >&2
+          exit 1
+        fi
+      # Descargar el dist que dejo el build. Debe hacerse AQUI, con las credenciales de la
+      # plataforma, antes de que pre_build asuma el rol del cliente.
+      - |
+        if [ "$TEMPLATE_ID" = "angular-static" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          : "${DIST_ARTIFACT_KEY:=artifacts/$TENANT_ID/$APP_ID/$RELEASE_ID/dist.tgz}"
+          export DIST_DIR="$WORKDIR/site-dist"
+          mkdir -p "$DIST_DIR"
+          aws s3 cp "s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY" /tmp/dist.tgz --only-show-errors
+          tar -xzf /tmp/dist.tgz -C "$DIST_DIR"
+          if [ ! -f "$DIST_DIR/index.html" ]; then
+            echo "El dist descargado de s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY no contiene index.html" >&2
+            exit 1
+          fi
+        fi
 
   pre_build:
     commands:
@@ -41,7 +71,7 @@ phases:
 
   build:
     commands:
-      - cd "deploy/templates/$TEMPLATE_ID"
+      - cd "$TEMPLATE_DIR"
       # Estado remoto por aplicacion en el bucket de la plataforma.
       # Nota: el backend S3 se autentica con las credenciales de la PLATAFORMA, no con las
       # asumidas; el apply de recursos usa las asumidas (provider). Se resuelve pasando el
@@ -54,21 +84,24 @@ phases:
           -backend-config="region=$AWS_REGION"
       - |
         IMAGE="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/releasy-$TENANT_ID-$APP_NAME:$COMMIT_SHA"
-        terraform apply -input=false -auto-approve \
-          -var="app_name=$APP_NAME" \
-          -var="tenant_slug=$TENANT_ID" \
-          -var="region=$AWS_REGION" \
-          -var="container_image=$IMAGE"
+        TF_VARS=(-var="app_name=$APP_NAME" -var="tenant_slug=$TENANT_ID" -var="region=$AWS_REGION")
+        # Solo las plantillas con backend declaran container_image (angular-static no).
+        if grep -q 'variable "container_image"' variables.tf; then
+          TF_VARS+=(-var="container_image=$IMAGE")
+        fi
+        terraform apply -input=false -auto-approve "${TF_VARS[@]}"
       # Recoger los outputs (URL, bucket y distribucion si hay front).
       - export APP_URL=$(terraform output -raw url)
       - export SITE_BUCKET=$(terraform output -raw bucket_name 2>/dev/null || echo "")
       - export DIST_ID=$(terraform output -raw distribution_id 2>/dev/null || echo "")
       # Si la plantilla tiene front, subir el build a S3 e invalidar CloudFront.
       - |
-        if [ -n "$SITE_BUCKET" ]; then
-          DIST_DIR=$(find "$CODEBUILD_SRC_DIR/repo/frontend/dist" -maxdepth 2 -name browser -type d | head -n1)
+        if [ -n "$SITE_BUCKET" ] && [ -n "$DIST_DIR" ]; then
+          # DIST_DIR es el dist extraido en la fase install (index.html en la raiz).
           aws s3 sync "$DIST_DIR" "s3://$SITE_BUCKET" --delete
-          [ -n "$DIST_ID" ] && aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
+          if [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
+          fi
         fi
 
   post_build:

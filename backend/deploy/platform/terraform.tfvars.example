@@ -10,3 +10,7 @@ state_bucket_name = "releasy-state-123456789012"
 # Opcional: ARN del secreto de Secrets Manager con el token de la GitHub App.
 # No hace falta si el repositorio de prueba es publico.
 # github_token_secret_arn = ""
+
+# Opcional: repositorio publico de ReleEasy y rama de los que el deploy clona las plantillas.
+# releasy_repo_url    = "https://github.com/jdan2/ReleEasy-Cloud"
+# releasy_repo_branch = "develop"
