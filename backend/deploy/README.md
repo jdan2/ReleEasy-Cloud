@@ -170,13 +170,17 @@ aws cloudformation validate-template --template-body file://bootstrap/releasy-de
 Comprueba la sintaxis con una llamada de solo lectura a la API de CloudFormation. La
 respuesta indica `CAPABILITY_NAMED_IAM`, lo normal al declarar un rol con nombre fijo.
 
-### Publicar la plantilla (paso manual, cuando proceda)
+### Publicar la plantilla (la gestiona `platform/`, D-35)
 
-Para que el enlace *Quick-create* funcione, la plantilla debe estar en una URL pública
-(un bucket S3 de la plataforma). El portal construye entonces un enlace del tipo:
+Para que el enlace *Quick-create* funcione, la plantilla debe estar en una URL pública.
+`platform/public-templates.tf` crea el bucket `releasy-public-<cuenta>` (lectura pública
+solo del prefijo `cloudformation/`) y sube `bootstrap/releasy-deploy-role.yaml`. Tras el
+`apply`, `terraform output role_template_url` da la URL, que se configura en el backend
+(`RELEASY_AWS_ROLE_TEMPLATE_URL`, propiedad `releasy.aws.role-template-url`). El portal
+construye entonces un enlace regional del tipo:
 
 ```
-https://console.aws.amazon.com/cloudformation/home?#/stacks/create/review
+https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/stacks/quickcreate
   ?templateURL=<URL de la plantilla>
   &stackName=ReleEasy-DeployRole
   &param_PlatformAccountId=<cuenta de la plataforma>

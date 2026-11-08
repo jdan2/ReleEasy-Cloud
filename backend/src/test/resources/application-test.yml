@@ -10,6 +10,7 @@ releasy:
   aws:
     mode: mock
     platform-account-id: "111122223333"
+    role-template-url: https://plantillas.example.com/cloudformation/releasy-deploy-role.yaml
     mock:
       release-start-delay: 0s
       release-duration: 0s

@@ -82,6 +82,9 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.aws.status").value("NOT_CONNECTED"))
                 .andExpect(jsonPath("$.aws.externalId").isNotEmpty())
                 .andExpect(jsonPath("$.aws.platformAccountId").value("111122223333"))
+                .andExpect(jsonPath("$.aws.region").isNotEmpty())
+                .andExpect(jsonPath("$.aws.roleTemplateUrl")
+                        .value("https://plantillas.example.com/cloudformation/releasy-deploy-role.yaml"))
                 .andExpect(jsonPath("$.github.status").value("NOT_CONNECTED"))
                 .andExpect(jsonPath("$.appCount").value(0));
 

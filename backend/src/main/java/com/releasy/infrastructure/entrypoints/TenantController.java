@@ -22,12 +22,12 @@ public class TenantController {
 
     private final TenantService tenantService;
     private final AppService appService;
-    private final String platformAccountId;
+    private final ReleasyProperties.Aws awsProperties;
 
     public TenantController(TenantService tenantService, AppService appService, ReleasyProperties properties) {
         this.tenantService = tenantService;
         this.appService = appService;
-        this.platformAccountId = properties.aws().platformAccountId();
+        this.awsProperties = properties.aws();
     }
 
     @GetMapping
@@ -46,6 +46,7 @@ public class TenantController {
     }
 
     private TenantResponse toResponse(Tenant tenant) {
-        return TenantResponse.from(tenant, platformAccountId, appService.listByTenant(tenant.id()).size());
+        return TenantResponse.from(tenant, awsProperties.platformAccountId(), awsProperties.region(),
+                awsProperties.roleTemplateUrl(), appService.listByTenant(tenant.id()).size());
     }
 }

@@ -21,13 +21,17 @@ public record TenantResponse(
 
     /**
      * @param platformAccountId cuenta AWS de la plataforma, en la que debe confiar el rol del cliente
+     * @param region            región AWS de la plataforma (consola de CloudFormation del Quick-create)
+     * @param roleTemplateUrl   URL pública de la plantilla del rol; vacía si no está publicada
      * @param appCount          número de aplicaciones del cliente
      */
-    public static TenantResponse from(Tenant t, String platformAccountId, int appCount) {
+    public static TenantResponse from(Tenant t, String platformAccountId, String region, String roleTemplateUrl,
+                                      int appCount) {
         AwsConnection aws = t.aws();
         GithubConnection github = t.github();
         return new TenantResponse(t.id(), t.name(), t.email(),
-                new Aws(aws.status(), aws.externalId(), platformAccountId, aws.roleArn(), aws.accountId(),
+                new Aws(aws.status(), aws.externalId(), platformAccountId, region,
+                        roleTemplateUrl == null ? "" : roleTemplateUrl, aws.roleArn(), aws.accountId(),
                         aws.connectedAt()),
                 new Github(github.status(), github.accountLogin(), github.installationId(), github.authorizedBy(),
                         github.connectedAt()),
@@ -38,6 +42,8 @@ public record TenantResponse(
             ConnectionStatus status,
             String externalId,
             String platformAccountId,
+            String region,
+            String roleTemplateUrl,
             String roleArn,
             String accountId,
             Instant connectedAt) {

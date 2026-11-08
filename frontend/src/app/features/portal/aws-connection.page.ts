@@ -8,8 +8,6 @@ import { describeHttpError } from '../../shared/http-error';
 import { StatusBadge } from '../../shared/status-badge';
 
 const ROLE_NAME = 'ReleEasyDeployRole';
-/** URL pública de la plantilla de CloudFormation del rol (se publicará en la fase 4). */
-const ROLE_TEMPLATE_URL = 'https://releasy-public.s3.eu-west-1.amazonaws.com/cloudformation/releasy-deploy-role.yaml';
 
 /**
  * Conexión con la cuenta AWS del propio cliente (D-18).
@@ -37,16 +35,21 @@ export class AwsConnectionPage implements OnInit {
   /** Enlace "Quick-create" de CloudFormation con los parámetros ya rellenos. */
   protected readonly quickCreateUrl = computed(() => {
     const aws = this.tenant()?.aws;
-    if (!aws) {
+    if (!aws?.roleTemplateUrl) {
       return '';
     }
     const params = new URLSearchParams({
-      templateURL: ROLE_TEMPLATE_URL,
+      templateURL: aws.roleTemplateUrl,
       stackName: 'releasy-connection',
       param_PlatformAccountId: aws.platformAccountId,
       param_ExternalId: aws.externalId,
     });
-    return `https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?${params.toString()}`;
+    // Consola regional: el stack se crea en la región de la plataforma (donde está publicada la plantilla).
+    const region = aws.region || 'us-east-1';
+    return (
+      `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}` +
+      `#/stacks/quickcreate?${params.toString()}`
+    );
   });
 
   /** Lo que crea el stack, para que el cliente sepa exactamente qué permisos concede. */

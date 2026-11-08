@@ -414,6 +414,8 @@ function newTenant(name: string, email: string, createdAt = Date.now()): MockTen
       status: 'NOT_CONNECTED',
       externalId: `rle-${randomHex(24)}`,
       platformAccountId: PLATFORM_ACCOUNT_ID,
+      region: 'us-east-1',
+      roleTemplateUrl: 'https://releasy-public-053214907144.s3.us-east-1.amazonaws.com/cloudformation/releasy-deploy-role.yaml',
       roleArn: null,
       accountId: null,
       connectedAt: null,

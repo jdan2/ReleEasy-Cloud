@@ -347,3 +347,21 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 - **Corrección incluida:** `-var="container_image=..."` solo se pasa a plantillas que declaran esa variable (`angular-static` no la declara y el `apply` fallaba). También se evita que la invalidación de CloudFront devuelva código distinto de 0 si no hay distribución.
 - **Verificación:** `terraform fmt`, `init -backend=false` y `validate` correctos en `platform/` y en `templates/angular-static`; buildspec parseados como YAML y `state-machine.asl.json` como JSON; nombres de variables revisados entre máquina de estados y ambos buildspec. No se ejecutó `apply`; el cambio en `platform/` es una actualización in-place de los dos proyectos CodeBuild y la máquina de estados.
 - **Limitaciones:** el clon sigue la rama, no un commit fijo (las plantillas pueden cambiar entre builds; fijar un tag o commit si se quiere reproducibilidad); los artefactos de `artifacts/` no caducan (pendiente una regla de ciclo de vida); sigue vigente la limitación de D-33 sobre las credenciales del backend S3; con `GITHUB_TOKEN` vacío y repo público, el clone `https://x-access-token:@github.com/...` del build debería funcionar, pero si fallase habría que clonar sin credenciales cuando el token esté vacío.
+
+## D-35 · Plantilla del rol publicada en un bucket público de solo lectura gestionado por platform/
+
+- **Fecha:** 2026-11-07.
+- **Contexto:** el enlace *Quick-create* del portal apuntaba a un bucket inexistente (`releasy-public`), por lo que CloudFormation no podía cargar la plantilla.
+- **Decisión:** `platform/public-templates.tf` crea el bucket `releasy-public-<cuenta>` (nombre único derivado de la cuenta) y sube `bootstrap/releasy-deploy-role.yaml` como `cloudformation/releasy-deploy-role.yaml`. La política permite `s3:GetObject` a cualquiera **solo** sobre `cloudformation/*`; las ACL siguen bloqueadas y no hay listado. La plantilla no contiene secretos (el External ID es un parámetro `NoEcho`).
+- **Portal:** el backend expone `aws.roleTemplateUrl` y `aws.region` en el tenant (propiedad `releasy.aws.role-template-url`, variable `RELEASY_AWS_ROLE_TEMPLATE_URL`, y la región ya existente). El front arma el enlace con la consola regional (`https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/stacks/quickcreate`) y, si la URL viene vacía, muestra un aviso en lugar del botón.
+- **Coste/riesgo:** un bucket con un único objeto de pocos KB; la exposición pública se limita a una plantilla ya publicada en el repositorio. `force_destroy` permite destruirlo con `terraform destroy`.
+- **Verificación:** `terraform fmt` y `validate` correctos; no se ejecutó `apply`. Tests de API y del portal correctos.
+
+## D-35 · Plantilla del rol publicada en un bucket público de solo lectura gestionado por platform/
+
+- **Fecha:** 2026-11-07.
+- **Contexto:** el enlace *Quick-create* del portal apuntaba a un bucket inexistente (`releasy-public`), por lo que CloudFormation no podía cargar la plantilla.
+- **Decisión:** `platform/public-templates.tf` crea el bucket `releasy-public-<cuenta>` (nombre único derivado de la cuenta) y sube `bootstrap/releasy-deploy-role.yaml` como `cloudformation/releasy-deploy-role.yaml`. La política permite `s3:GetObject` a cualquiera **solo** sobre `cloudformation/*`; las ACL siguen bloqueadas y no hay listado. La plantilla no contiene secretos (el External ID es un parámetro `NoEcho`).
+- **Portal:** el backend expone `aws.roleTemplateUrl` y `aws.region` en el tenant (propiedades `releasy.aws.role-template-url`, variable `RELEASY_AWS_ROLE_TEMPLATE_URL`, y la región ya existente). El front arma el enlace con la consola regional (`https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/stacks/quickcreate`) y, si la URL viene vacía, muestra un aviso en lugar del botón.
+- **Coste/riesgo:** un bucket con un único objeto de pocos KB; la exposición pública se limita a una plantilla ya publicada en el repositorio. `force_destroy` permite su destrucción con `terraform destroy`.
+- **Verificación:** `terraform fmt` y `validate` correctos; no se ejecutó `apply`. Tests de API y del portal correctos.

@@ -38,7 +38,7 @@ public class MeController {
     private final AwsConnectionService awsConnectionService;
     private final GithubConnectionService githubConnectionService;
     private final AppService appService;
-    private final String platformAccountId;
+    private final ReleasyProperties.Aws awsProperties;
 
     public MeController(TenantService tenantService, AwsConnectionService awsConnectionService,
                         GithubConnectionService githubConnectionService, AppService appService,
@@ -47,7 +47,7 @@ public class MeController {
         this.awsConnectionService = awsConnectionService;
         this.githubConnectionService = githubConnectionService;
         this.appService = appService;
-        this.platformAccountId = properties.aws().platformAccountId();
+        this.awsProperties = properties.aws();
     }
 
     @GetMapping("/tenant")
@@ -105,6 +105,7 @@ public class MeController {
     }
 
     private TenantResponse toResponse(Tenant tenant) {
-        return TenantResponse.from(tenant, platformAccountId, appService.listByTenant(tenant.id()).size());
+        return TenantResponse.from(tenant, awsProperties.platformAccountId(), awsProperties.region(),
+                awsProperties.roleTemplateUrl(), appService.listByTenant(tenant.id()).size());
     }
 }
