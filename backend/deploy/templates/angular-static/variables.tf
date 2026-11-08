@@ -11,6 +11,18 @@ variable "region" {
   default     = "eu-west-1"
 }
 
+variable "tenant_role_arn" {
+  description = "ARN del rol ReleEasyDeployRole de la cuenta del cliente. Si se informa, el provider aws lo asume (el estado S3 sigue usando las credenciales de la plataforma). Vacio = credenciales del entorno."
+  type        = string
+  default     = ""
+}
+variable "external_id" {
+  description = "External ID para asumir tenant_role_arn."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "app_name" {
   description = "Nombre corto de la aplicacion (slug)."
   type        = string

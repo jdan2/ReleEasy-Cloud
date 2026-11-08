@@ -15,10 +15,26 @@ terraform {
 
 provider "aws" {
   region = var.region
+  dynamic "assume_role" {
+    for_each = var.tenant_role_arn != "" ? [1] : []
+    content {
+      role_arn     = var.tenant_role_arn
+      external_id  = var.external_id
+      session_name = "releasy-terraform"
+    }
+  }
 }
 
 # CloudFront exige WAF y sus certificados/metricas en us-east-1.
 provider "aws" {
   alias  = "us_east_1"
   region = "us-east-1"
+  dynamic "assume_role" {
+    for_each = var.tenant_role_arn != "" ? [1] : []
+    content {
+      role_arn     = var.tenant_role_arn
+      external_id  = var.external_id
+      session_name = "releasy-terraform"
+    }
+  }
 }
