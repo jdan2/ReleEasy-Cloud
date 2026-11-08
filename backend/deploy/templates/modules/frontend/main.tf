@@ -13,7 +13,10 @@ locals {
 # --- Bucket de contenido estatico (privado y cifrado) ---
 resource "aws_s3_bucket" "site" {
   bucket = local.bucket_name
-  tags   = var.tags
+  # El contenido se regenera en cada despliegue: se permite destruir el bucket aunque
+  # tenga objetos y versiones. Sin esto, terraform destroy falla.
+  force_destroy = true
+  tags          = var.tags
 }
 
 resource "aws_s3_bucket_public_access_block" "site" {

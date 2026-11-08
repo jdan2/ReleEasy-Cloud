@@ -5,7 +5,10 @@
 # --- Bucket del estado de Terraform de las apps de los clientes ---
 resource "aws_s3_bucket" "state" {
   bucket = var.state_bucket_name
-  tags   = var.tags
+  # Permite destruir el bucket aunque tenga objetos y versiones (estados de las apps).
+  # Sin esto, terraform destroy falla y el bucket queda huerfano.
+  force_destroy = true
+  tags          = var.tags
 }
 
 resource "aws_s3_bucket_versioning" "state" {
