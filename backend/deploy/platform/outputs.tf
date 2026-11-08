@@ -23,6 +23,11 @@ output "codebuild_role_arn" {
   value       = aws_iam_role.codebuild.arn
 }
 
+output "role_template_url" {
+  description = "URL publica de la plantilla del rol del cliente. Es el RELEASY_ROLE_TEMPLATE_URL del backend."
+  value       = "https://${aws_s3_bucket.public.bucket}.s3.${var.region}.amazonaws.com/${aws_s3_object.role_template.key}"
+}
+
 output "dynamodb_tables" {
   description = "Nombres de las tablas DynamoDB de la plataforma."
   value = {
