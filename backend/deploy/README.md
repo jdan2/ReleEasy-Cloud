@@ -195,8 +195,127 @@ https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/sta
   &param_ExternalId=<External ID del cliente>
 ```
 
-## Plataforma, plantillas y pipelines
+## Runbook de despliegue
 
-Pendientes (siguientes bloques de la Fase 4). Cada uno se validará con
-`terraform init -backend=false`, `terraform validate` y `terraform fmt -check`, sin
-`apply`.
+Procedimiento seguido en la primera prueba real (D-39). Solo `angular-static` se probó
+de extremo a extremo; las otras dos plantillas se han validado con `terraform validate`.
+Los marcadores `<...>` se sustituyen por valores propios; no se guardan secretos en el repo.
+
+1. **Preparar el perfil AWS.** Crear un usuario IAM de pruebas con clave de acceso y
+   configurar un perfil con nombre (no pegar nunca las claves en chats ni en archivos del repo).
+
+   ```powershell
+   aws configure --profile releasy
+   $env:AWS_PROFILE = "releasy"
+   $env:AWS_DEFAULT_REGION = "us-east-1"
+   aws sts get-caller-identity   # comprueba la cuenta
+   ```
+
+2. **Desplegar la plataforma** (`backend/deploy/platform`). El estado es local: el bucket
+   de estado lo crea esta misma configuración, así que no puede guardarse en él. Crear
+   `backend_override.tf` (no versionado) y `terraform.tfvars` con los valores de la cuenta.
+
+   ```powershell
+   cd backend\deploy\platform
+   # backend_override.tf: fuerza el estado local
+   #   terraform { backend "local" {} }
+   # terraform.tfvars: region, state_bucket_name (releasy-state-<ID_CUENTA>),
+   #   github_token_secret_arn, releasy_repo_url y releasy_repo_branch (ver variables.tf)
+   terraform init
+   terraform plan
+   terraform apply
+   terraform output
+   ```
+
+   Si un corte de red interrumpe el `apply`, repetirlo: es idempotente. Las salidas dan el
+   ARN de la máquina de estados (`RELEASY_STATE_MACHINE_ARN`) y `role_template_url`
+   (`RELEASY_AWS_ROLE_TEMPLATE_URL`).
+
+3. **Arrancar el backend en modo real** con `RELEASY_AWS_MODE=real`, las variables de
+   `backend/.env` (ver `.env.example`: JWT, GitHub App, ARN de la máquina de estados, URL de
+   la plantilla) y, en el portal, `mockApi: false`.
+
+4. **Crear el stack del rol desde el portal.** En *Conectar AWS* el portal muestra el
+   enlace *Quick-create* de CloudFormation. El cliente lo abre en su consola, crea el
+   stack `ReleEasy-DeployRole`, copia la salida `RoleArn` y la pega en el portal; el
+   backend la valida con `sts:AssumeRole` y el External ID.
+
+5. **Conectar GitHub y crear la aplicación.** Instalar y autorizar la GitHub App, elegir la
+   plantilla `angular-static`, el repositorio y la rama. Al crear la app se lanza el
+   release del último commit (Step Functions → `releasy-build` → `releasy-deploy`).
+
+6. **Redesplegar si falla.** En el detalle de la app, botón *Redesplegar*
+   (`POST /api/apps/{id}/releases`). Es idempotente por commit: relanza un release `FAILED`,
+   pero no uno `PENDING`, `RUNNING` o `SUCCEEDED`. Para ver la causa, revisar los logs de
+   CodeBuild (`/aws/codebuild/releasy-build` y `releasy-deploy`).
+
+7. **Comprobar.** El release debe llegar a `SUCCEEDED` en el portal; la ejecución de Step
+   Functions debe terminar en verde; la URL de CloudFront de la app abre la aplicación.
+
+### Limitaciones a tener presentes
+
+Las opciones del catálogo (WAF, RUM, email de alarmas) **no llegan todavía a Terraform**,
+así que marcarlas en el portal no crea esos recursos. La lista completa de deuda técnica
+conocida está en D-39.
+
+## Runbook de desmontaje
+
+Orden recomendado para no dejar recursos huérfanos. Ejecutar siempre con el mismo perfil
+AWS de la prueba. Los comandos destruyen recursos reales: revisar el `plan` y la cuenta antes.
+
+1. **Destruir cada aplicación** (la que funcionó y la que quedó a medias). Cada app tiene su
+   estado en el bucket de la plataforma.
+
+   ```powershell
+   cd backend\deploy\templates\angular-static
+   terraform init -reconfigure `
+     -backend-config="bucket=releasy-state-<ID_CUENTA>" `
+     -backend-config="key=tenants/<tenant>/<app>/terraform.tfstate" `
+     -backend-config="region=us-east-1"
+   terraform destroy `
+     -var "app_name=<app>" -var "tenant_slug=<tenant>" -var "region=us-east-1"
+   ```
+
+   Si las credenciales locales no son las del rol del cliente, pasar también
+   `-var "tenant_role_arn=<ARN_ROL>"` y `-var "external_id=<EXTERNAL_ID>"` (D-37).
+   Repetir con la plantilla que corresponda a cada app.
+
+2. **Borrar el stack de CloudFormation del rol** (`ReleEasy-DeployRole`), desde la consola
+   o con `aws cloudformation delete-stack --stack-name ReleEasy-DeployRole`. Debe ir después
+   del paso 1, porque Terraform necesita el rol para destruir.
+
+3. **Destruir la plataforma.** Los buckets tienen `force_destroy`, así que se vacían solos.
+
+   ```powershell
+   cd backend\deploy\platform
+   terraform destroy
+   ```
+
+4. **Borrar los grupos de logs** que queden (no los gestiona Terraform).
+
+   ```powershell
+   aws logs describe-log-groups --log-group-name-prefix /aws/codebuild/releasy- --query "logGroups[].logGroupName"
+   aws logs delete-log-group --log-group-name /aws/codebuild/releasy-build
+   aws logs delete-log-group --log-group-name /aws/codebuild/releasy-deploy
+   aws logs describe-log-groups --log-group-name-prefix /aws/vendedlogs --query "logGroups[].logGroupName"
+   ```
+
+   Revisar también los grupos de Step Functions que aparezcan y borrarlos de la misma forma.
+
+5. **Verificar y cerrar.** Comprobar en la consola (S3, CloudFront, DynamoDB, CodeBuild,
+   Step Functions, CloudFormation, IAM, CloudWatch Logs) que no queda nada con el prefijo
+   `releasy`. Desactivar y borrar las claves de acceso del usuario IAM de pruebas. Mantener
+   un AWS Budget unos días para detectar cargos inesperados.
+
+## Costes y riesgos
+
+- **Coste:** la cuenta de prueba no tenía free tier. La plataforma parada cuesta casi nada
+  (DynamoDB bajo demanda; CodeBuild y Step Functions por uso). `angular-static` cuesta
+  céntimos (CloudFront incluye 1 TB gratuito de transferencia). WAF tiene cargo mensual
+  fijo. El NAT Gateway (~1 USD/día) encarece `springboot-api` y `angular-springboot`.
+  Coste real de la prueba: [completar tras revisar Cost Explorer].
+- **Claves:** no pegar claves de acceso ni secretos en chats, issues ni commits. Si se
+  exponen, desactivarlas y rotarlas de inmediato.
+- **Presupuesto:** crear un AWS Budget con aviso por email antes del primer `apply`.
+- **Plataforma:** el estado de `platform/` es local; no perder la carpeta antes del
+  `destroy`.

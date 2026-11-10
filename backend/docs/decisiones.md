@@ -403,3 +403,33 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 - **Tamaño:** IAM limita a 10 240 caracteres (sin espacios) la suma de políticas inline de un rol. Medido sobre el JSON minificado de los `PolicyDocument`: ~5 200 caracteres en total, así que se mantienen inline (sin `AWS::IAM::ManagedPolicy`).
 - **Verificación:** YAML parseado con un loader que soporta `!Ref`/`!Sub`/`!GetAtt`; parámetros `PlatformAccountId`, `ExternalId`, `RoleName` y salida `RoleArn` sin cambios. No se creó ni actualizó ningún stack.
 - **Nota:** los clientes con el rol ya creado deben actualizar el stack con la plantilla nueva.
+
+## D-39 · Resultados de la primera prueba real y limitaciones conocidas
+
+- **Fecha:** 2026-11-10.
+- **Contexto:** hasta D-38 todo el código de la Fase 4 se había validado solo de forma estática. Esta es la primera prueba contra AWS real.
+- **Entorno:** una cuenta AWS de prueba (al final, plataforma y cliente en la misma cuenta), región `us-east-1`, sin free tier. Durante la prueba hubo un rol del cliente en otra cuenta (terminada en `4303`) y la plataforma en la `7144`; ese escenario multi-cuenta permitió detectar el fallo de D-37.
+  - **Plataforma** (`backend/deploy/platform`, Terraform con estado local por la dependencia circular con el bucket de estado): 15 recursos (roles IAM de CodeBuild y Step Functions, bucket S3 de estado, 4 tablas DynamoDB bajo demanda, proyectos `releasy-build` y `releasy-deploy`, y la máquina de estados), más el bucket público de solo lectura con la plantilla del rol (D-35). El `apply` se hizo en dos pasadas por un corte DNS intermitente del entorno local.
+  - **Conexión BYOA:** el cliente crea el stack de CloudFormation de `ReleEasyDeployRole` (External ID generado por el backend), pega el ARN en el portal y el backend lo valida con `sts:AssumeRole`.
+  - **Backend** en modo real (`RELEASY_AWS_MODE=real`, DynamoDB y Step Functions reales), GitHub App real y portal Angular. Repositorio de prueba público (app Angular 21 mínima en `frontend/`, build en `frontend/dist/releasy-demo/browser`) y plantilla `angular-static` (S3 privado + CloudFront con OAC, HTTPS, reescritura 403/404 a `index.html`, alarma 5xx + SNS).
+- **Resultado:** el release llegó a `SUCCEEDED` y la URL de CloudFront abre la aplicación de demo.
+- **Probado de extremo a extremo:** solo `angular-static`. Las plantillas `springboot-api` y `angular-springboot` **solo se han validado con `terraform validate`**; no se han desplegado.
+- **Problemas encontrados y resueltos:**
+  - El proyecto `releasy-deploy` es `NO_SOURCE` y no tenía las plantillas: se clona el repo público y el dist del build llega al deploy por el bucket de estado (D-34).
+  - No existía "Redesplegar": si el primer release fallaba no había reintento. Se añade `POST /api/apps/{id}/releases` y el botón del portal (D-36).
+  - Multi-cuenta: Terraform usaba las credenciales asumidas del cliente para el backend S3 del estado y fallaba con 403. Credenciales de plataforma para estado y artefactos, y `assume_role` en el provider `aws` de las plantillas (D-37).
+  - El rol del cliente carecía de lecturas `Get*`/`List*`/`Describe*` que usa el provider (p. ej. `s3:GetBucketAcl`): políticas ampliadas (D-38).
+  - El release no pasaba a `FAILED` si fallaba la fase de build: corregido antes de la prueba (commit `6681534`).
+  - Cortes DNS intermitentes del entorno local afectaron a Terraform y al backend. No es un defecto del producto.
+- **Limitaciones conocidas (deuda técnica):**
+  1. Las opciones del catálogo (`enable_waf`, `enable_rum`, `notification_email`, etc.) **no llegan a Terraform**: `buildspec-deploy.yml` solo pasa `app_name`, `tenant_slug`, `region` y `container_image`. WAF, RUM y la suscripción de email no se crean aunque se marquen en el portal.
+  2. El módulo `frontend` solo crea la alarma 5xx, aunque la opción se llama 4xx/5xx.
+  3. El módulo no expone el ID del monitor RUM ni inyecta el snippet en la aplicación.
+  4. El build empuja la imagen a ECR (`releasy-<tenant>-<app>`) antes de que Terraform cree el repositorio (afecta a las plantillas con backend; ver D-37).
+  5. El token de instalación de la GitHub App caduca en 1 hora (solo afecta a repos privados; la prueba usó un repo público).
+  6. El estado de `platform/` es local.
+  7. Las plantillas se clonan de la rama `develop` del repo público (acoplamiento a GitHub; alternativa: empaquetarlas en S3).
+  8. El dist no se firma ni se verifica.
+  9. El release pasa a `FAILED` sin mensaje detallado (solo "revisa los logs de CodeBuild").
+- **Coste:** plataforma parada, cercano a cero (DynamoDB bajo demanda, CodeBuild y Step Functions por uso). `angular-static`: céntimos (CloudFront incluye 1 TB gratuito). WAF tendría un cargo mensual fijo. El NAT Gateway (~1 USD/día) pesa en `springboot-api` y `angular-springboot`. Coste real de la prueba: [completar tras revisar Cost Explorer].
+- **Runbooks:** pasos de despliegue y desmontaje en `backend/deploy/README.md`.
