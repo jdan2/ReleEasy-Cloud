@@ -162,8 +162,11 @@ ni ejecuta nada.
   presenta el External ID (`sts:ExternalId`).
 - **Permisos:** acotados a los servicios de las plantillas (S3, CloudFront, VPC, EC2
   Auto Scaling, ALB, ECR, CloudWatch, SNS, RUM, X-Ray, WAF, Route 53, ACM, API
-  Gateway). Los buckets S3 y los roles IAM que puede crear se limitan al prefijo
-  `releasy-*`.
+  Gateway). Incluyen las lecturas completas por servicio (`Get*`/`List*`/`Describe*`)
+  que el provider de Terraform hace en cada `apply`/refresh, y las escrituras para
+  crear, etiquetar y destruir (`terraform destroy`) los recursos (D-38). Los buckets
+  S3, los roles e instance profiles IAM, los repositorios ECR, los topics SNS y las
+  alarmas se limitan al prefijo `releasy-*`; los grupos de logs, a `/releasy/*`.
 - **Salida:** `RoleArn`, que el cliente pega en el portal para completar la conexión.
 
 ### Validar (no crea nada)

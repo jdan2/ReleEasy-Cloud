@@ -390,3 +390,16 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 - **IAM:** sin cambios. `iam.tf` ya permite `sts:AssumeRole` sobre `arn:aws:iam::*:role/ReleEasyDeployRole`; la confianza del rol del cliente (`releasy-deploy-role.yaml`) exige `sts:ExternalId`. No hace falta `sts:TagSession` porque el provider no pasa tags de sesión.
 - **Pendiente (orden ECR):** `buildspec-build.yml` empuja la imagen al ECR del cliente antes de que Terraform cree el repositorio (módulo `backend`), así que el primer push de las plantillas con backend puede fallar. No se corrige aquí; hay que crear el repo antes (p. ej. un paso previo de Terraform) o mover el push tras el apply.
 - **Verificación:** `terraform fmt -recursive`, `init -backend=false` y `validate` por plantilla; YAML de los buildspec parseable; `bash -n` de los scripts embebidos. No se ejecutó `apply`.
+
+## D-38 · Permisos completos del rol de despliegue: lecturas por servicio y escrituras acotadas
+
+- **Fecha:** 2026-11-10.
+- **Contexto:** con el `assume_role` de D-37 funcionando, el `apply` de `angular-static` falló por permisos que la política no enumeraba (`s3:GetBucketAcl`, antes `cloudfront:GetOriginAccessControl` y `SNS:GetTopicAttributes`). El provider `hashicorp/aws` 5.x lee en cada creación y refresh muchos atributos de cada recurso (en S3: ACL, CORS, website, logging, lifecycle, replication, accelerate, request payment, object lock, tags...), así que enumerar lecturas una a una no escala.
+- **Decisión:**
+  - **Lecturas completas por servicio:** `s3:Get*`/`s3:List*` (solo `releasy-*`), `cloudfront:Get*`/`List*`/`Describe*`, `ec2:Describe*`/`Get*`, `autoscaling:Describe*`, `elasticloadbalancing:Describe*`, `logs:`/`cloudwatch:`/`sns:`/`rum:`/`xray:` `Describe*`/`List*`/`Get*` e `iam:Get*`/`List*` (solo roles e instance profiles `releasy-*`).
+  - **Escrituras acotadas:** crear, actualizar, etiquetar y borrar (para `terraform destroy`) solo lo que crean las plantillas. Recurso acotado por prefijo donde el servicio lo admite: S3 `releasy-*`, IAM `role/` e `instance-profile/releasy-*`, ECR `repository/releasy-*`, SNS `releasy-*`, alarmas `alarm:releasy-*` y logs `log-group:/releasy/*`. CloudFront, EC2, Auto Scaling, ELB, RUM y X-Ray quedan en `"*"` (no admiten o no conviene el nivel de recurso). Se quitan `logs:*`, `cloudwatch:*`, `sns:*`, `autoscaling:*`, `elasticloadbalancing:*` y `ecr:*` sobre `"*"`.
+  - **Añadidos:** `iam:CreateServiceLinkedRole` limitado por `iam:AWSServiceName` (Auto Scaling, ELB, RUM, API Gateway), lectura de políticas gestionadas de AWS (`arn:aws:iam::aws:policy/*`, para el adjunto de `AmazonSSMManagedInstanceCore`) y `ec2:*NetworkInterface*` para el VPC Link de API Gateway.
+  - Sin `*:*` ni `iam:*`. WAF, Route 53, ACM y API Gateway (opcionales) no cambian.
+- **Tamaño:** IAM limita a 10 240 caracteres (sin espacios) la suma de políticas inline de un rol. Medido sobre el JSON minificado de los `PolicyDocument`: ~5 200 caracteres en total, así que se mantienen inline (sin `AWS::IAM::ManagedPolicy`).
+- **Verificación:** YAML parseado con un loader que soporta `!Ref`/`!Sub`/`!GetAtt`; parámetros `PlatformAccountId`, `ExternalId`, `RoleName` y salida `RoleArn` sin cambios. No se creó ni actualizó ningún stack.
+- **Nota:** los clientes con el rol ya creado deben actualizar el stack con la plantilla nueva.
