@@ -255,8 +255,21 @@ Los marcadores `<...>` se sustituyen por valores propios; no se guardan secretos
 ### Limitaciones a tener presentes
 
 Las opciones del catálogo (WAF, RUM, email de alarmas) **no llegan todavía a Terraform**,
-así que marcarlas en el portal no crea esos recursos. La lista completa de deuda técnica
-conocida está en D-39.
+así que marcarlas en el portal no crea esos recursos. Otras que conviene conocer antes de
+probar las plantillas con backend (D-40):
+
+- **`angular-springboot`:** CloudFront habla con el ALB por HTTPS (`https-only`), pero el ALB
+  solo escucha HTTP en el 80, así que `/api/*` no llegará al backend hasta corregirlo.
+- **ECR:** el build sube la imagen antes de que Terraform cree el repositorio (D-37), así que el
+  primer despliegue de `springboot-api` y `angular-springboot` fallará.
+- **Estado en el portal:** en modo real el release pasa de `PENDING` a `SUCCEEDED`/`FAILED` sin
+  `RUNNING`, y la app conserva la URL provisional; la URL real está en el release y en
+  `terraform output url`.
+- **Repos privados:** el build no recibe todavía el token de la GitHub App; usar un repo público.
+- **Configuración:** la URL de la plantilla del rol va en `RELEASY_AWS_ROLE_TEMPLATE_URL` (con
+  `AWS_`); si no, el portal desactiva el botón *Quick-create*.
+
+La lista completa de deuda técnica conocida está en D-39 y D-40 (y en la Tabla 17 del TFM).
 
 ## Runbook de desmontaje
 

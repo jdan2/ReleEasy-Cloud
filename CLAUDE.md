@@ -13,46 +13,71 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 7. **Base de datos:** fuera de alcance por ahora (D-19).
 8. **Sin ECS Fargate ni SQS** (D-23): el backend Spring Boot corre en EC2 con Auto Scaling detrás de un ALB.
 
-## Estado (actualizado 2026-10-24)
+## Estado (actualizado 2026-11-10)
 
 | Pieza | Estado |
 |---|---|
 | 1. Estructura y dependencias | ✅ |
-| 2. Backend | ✅ **Nuevo alcance completo** (D-24 a D-26; 62 pruebas): login con JWT, GitHub App **real y probada** (o mock), y AWS, STS y despliegues **simulados**. Falta: AWS real (Terraform) y webhook con URL pública. |
-| 3. Portal | ✅ **Conectado a la API** (`mockApi: false` desde D-25; el modo demo sigue disponible): vistas de cliente y de admin, registro, conexiones AWS y GitHub (con `/portal/github/callback`), catálogo, formulario dinámico, estimador de costes y releases. 53 pruebas Vitest. |
-| 4. Terraform y pipelines | ✅ **Completa y validada; probada en AWS real solo con `angular-static`** (release `SUCCEEDED` y URL de CloudFront abierta; resultados y limitaciones en D-39, pasos en el runbook de `backend/deploy/README.md`). Las otras dos plantillas solo se validaron con `terraform validate`. Descripción de lo construido: `bootstrap/releasy-deploy-role.yaml` (rol del cliente, D-28); las **tres plantillas** `angular-static` (D-29), `springboot-api` (D-30) y `angular-springboot` (D-31) con módulos `network`/`frontend`/`backend`/`observability`; `platform/` (estado S3, 4 tablas DynamoDB, CodeBuild, Step Functions, IAM; D-32); y `pipelines/` (`buildspec-build.yml`, `buildspec-deploy.yml`, `state-machine.asl.json`; D-33). **Falta:** probar en vivo `springboot-api` y `angular-springboot`, y pasar las opciones del catálogo a Terraform (D-39). |
-| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-39), `backend/docs/github-app.md`, `backend/deploy/README.md`, `frontend/README.md`, `SESION-Y-USUARIOS.md` y la memoria `TFM.docx` (capítulo 4 escrito) |
+| 2. Backend | ✅ **Completo; probado en modo real** (D-24 a D-27 y D-36; **70 pruebas**). Incluye login con JWT, GitHub App real, paquetes `infrastructure/entrypoints` (entrada) e `infrastructure/adapters` (salida) (D-27), y redespliegue `POST /api/apps/{id}/releases` (D-36). En modo `real` usa DynamoDB, STS y Step Functions de verdad. Falta: webhook con URL pública. |
+| 3. Portal | ✅ **Conectado a la API** (`mockApi: false`; el modo demo sigue disponible). Incluye botón "Redesplegar" y enlace *Quick-create* regional, que se desactiva si falta la URL de la plantilla. **55 pruebas** Vitest. |
+| 4. Terraform y pipelines | ✅ **Completa y validada; probada en AWS real solo con `angular-static`** (release `SUCCEEDED` y URL de CloudFront abierta; resultados en D-39, pasos en el runbook de `backend/deploy/README.md`). Las otras dos plantillas solo se validaron con `terraform validate`. Piezas: `bootstrap/releasy-deploy-role.yaml` (D-28 y D-38); plantillas `angular-static`, `springboot-api` y `angular-springboot` con los módulos `network`/`frontend`/`backend`/`observability` (D-29 a D-31); `platform/` (D-32 y D-35); y `pipelines/` (D-33, D-34 y D-37). **Falta** (D-39 y D-40): pasar las opciones del catálogo a Terraform; resolver el orden de ECR y el HTTPS de CloudFront hacia el ALB antes de probar las plantillas con backend; RUNNING y URL de la app en modo real; token de GitHub para repos privados. |
+| 5. Documentación | 🟡 `backend/docs/decisiones.md` (D-01 a D-40), `backend/docs/github-app.md`, `backend/deploy/README.md`, `frontend/README.md`, `SESION-Y-USUARIOS.md` y la memoria `TFM.docx`, con el **capítulo 4 reescrito el 2026-11-10**. Faltan el diagrama (Figura 3) y el README de puesta en marcha. |
 
-## Dónde retomar (sesión del 2026-10-24)
+## Dónde retomar (sesión del 2026-11-10)
 
 **Hecho en la última sesión:**
-- **GitHub App real creada y probada:** `releeasy-cloud-dev` (App ID 5457976), con Callback URL `http://localhost:4200/portal/github/callback`. El cliente demo la instaló y autorizó, y la conexión funcionó.
-  - Clave privada en `~/.releasy/github-app.pem`, fuera del repo.
-  - `RELEASY_GITHUB_MODE=real` y `RELEASY_GITHUB_*` en `backend/.env`; `githubAppSlug` y `githubClientId` en `config.json`.
-  - El webhook de la app sigue **desactivado** (`events: []`).
-- `SESION-Y-USUARIOS.md` explica dónde se guardan los usuarios (en memoria con `mock`, en DynamoDB con `real`) y la sesión (JWT en `sessionStorage`).
-- **Memoria del TFM** (`TFM.docx`, con `PLANTILLA.docx` de UNIR como referencia):
-  - Se escribió el **capítulo 4**: requisitos, sistema, decisiones de arquitectura, estado y evaluación, con las tablas 5 a 12.
-  - Los capítulos 1 a 3 y el artículo se alinearon con lo implementado: **Angular** (con justificación técnica frente a React), **EC2 con Auto Scaling**, **CloudWatch/X-Ray/RUM** y sin Fargate, RDS ni Prometheus/Grafana.
-  - Los índices se rehicieron con campos `TOC` y `SEQ`, y Word pide actualizarlos al abrir.
-  - Detalles de formato en la memoria `tfm-document`.
+- **Se descargó la rama `develop`** del compañero (21 commits, del 26-10 al 10-11) y se trabaja en ella. Trae la fase 4 completa y la primera prueba real (D-27 a D-39).
+- **Revisión de la fase 4 (D-40):** fallos nuevos documentados. El más grave: en `angular-springboot`, CloudFront usa `https-only` hacia un ALB que solo escucha HTTP.
+- **TFM, capítulo 4 reescrito** (tablas 5 a 19):
+  - nuevos apartados 4.2.8 (IaC de las plantillas), 4.2.9 (plataforma), 4.2.10 (pipeline, con la tabla de credenciales por operación) y 4.2.12 (limitaciones L-01 a L-13);
+  - en 4.3, validación estática y prueba real (4.3.3).
+  - Quedan en amarillo la **Figura 3** y el **coste real de la prueba** (al final de 4.3.3). Se reactivó `updateFields`, que el Word del compañero había quitado.
+- **TFM, capítulos 1 a 3:** 6 cambios con **control de cambios** (autor "Elkin Fabian Marmolejo") y 9 comentarios, **pendientes de que el compañero los acepte o los rechace**:
+  - GitHub Flow, GitHub Actions y GitHub Projects, en "Mecanismos de coordinación";
+  - la cita de Sridharan en 1.3;
+  - "autenticación" pasa a "control de acceso" en 2.2;
+  - la Tabla 4 pasa de "implementados" a "previstos".
+  - Los comentarios sin cambio de texto están en el objetivo del módulo común, en el tablero Kanban del 3.3 y en el Resumen. No volver a editar esos párrafos hasta que se resuelvan.
+- `.env.example`: la URL de la plantilla va en **`RELEASY_AWS_ROLE_TEMPLATE_URL`**; `RELEASY_ROLE_TEMPLATE_URL` no se lee.
+- `DEPENDENCIAS.txt`: completadas las secciones 5 (IaC) y 6 (servicios de AWS).
 
-**Para verlo funcionar:**
+**`.env` para AWS real:** el compañero pasó uno, que está en `~/Downloads/.env`. Es igual al `backend/.env` actual, pero con:
+- `RELEASY_AWS_MODE=real`;
+- la cuenta de la plataforma `053214907144` (la suya, en `us-east-1`);
+- `AWS_PROFILE=releasy`.
+
+Problemas de ese archivo:
+- usa `RELEASY_ROLE_TEMPLATE_URL`, que hay que renombrar a `RELEASY_AWS_ROLE_TEMPLATE_URL`;
+- `SPRING_PROFILES_ACTIVE = mock-fast` lleva espacios y rompe `source`;
+- en este Mac **no hay ningún perfil de AWS** (ni `~/.aws/config` ni `~/.aws/credentials`).
+
+Todavía no se ha copiado a `backend/.env`.
+
+**Disco casi lleno** (unos 740 MB libres el 2026-11-10): `terraform init` falla al descargar el provider (unos 700 MB). Hay que liberar espacio antes de validar Terraform.
+
+**Para verlo funcionar en local (modo mock):**
 1. **API:** F5 "ReleEasy API (mock)" (lee `backend/.env`: AWS simulado, GitHub real).
 2. **Portal:** `npx ng serve`, **en el puerto 4200**, porque la Callback URL de la GitHub App apunta ahí.
 3. **Entrar** con `demo@ferreteria-lopez.es` / `demo1234`.
 4. **Recorrer el flujo:**
-   - conectar GitHub (instala y autoriza la app real; con `RELEASY_GITHUB_MODE=mock` se simula);
+   - conectar GitHub;
    - conectar AWS con cualquier ARN válido (si contiene `fail`, simula un error);
-   - crear una app con un repo real, que se despliega sola (simulado) hasta `SUCCEEDED`.
+   - crear una app, que se despliega sola (simulado) hasta `SUCCEEDED`;
+   - "Redesplegar" relanza el último commit si su release falló.
 
 **Siguientes pasos posibles** (preguntar al usuario por cuál seguir antes de empezar):
-1. **Webhook de push en local** con una URL pública (p. ej. smee.io): activar el evento *Push* en la app, con el mismo secreto que `RELEASY_GITHUB_WEBHOOK_SECRET`.
-2. **Fase 4:** Terraform, pipelines y la plantilla de CloudFormation del rol del cliente (ver más abajo). **Nunca `apply` sin confirmación.**
-3. **Fase 5:** README de puesta en marcha y diagrama de arquitectura (en el TFM queda reservada la **Figura 3**, marcada en amarillo).
-4. **TFM:** al cerrar cada fase, actualizar el capítulo 4, sobre todo 4.2.9 (estado) y 4.3 (evaluación). Queda un hueco en amarillo en 4.3.2: falta indicar qué más del flujo probó el usuario.
+1. **Corregir los fallos de D-40:** RUNNING y URL de la app en modo real, release huérfano en `PENDING`, HTTPS de CloudFront hacia el ALB, orden de ECR y `use_lockfile`.
+2. **Pasar las opciones del catálogo a Terraform** (L-01), por ejemplo con un `tfvars.json` generado en el deploy.
+3. **Modo real en este Mac:** perfil de la CLI con acceso a la cuenta de la plataforma, o una plataforma propia. **Nunca `apply` sin confirmación.**
+4. **Webhook de push** con una URL pública (p. ej. smee.io).
+5. **Fase 5:** README de puesta en marcha y diagrama de arquitectura (Figura 3 del TFM).
+6. **TFM:** actualizar 4.2.11 (estado), 4.2.12 (limitaciones) y 4.3 al cerrar cada cambio.
+   - Los capítulos 1 a 3 siguen diciendo que hay GitHub Actions (CI) y que el portal se hace en el Sprint 3. No tocarlos sin que lo pidan los autores; el 4.1.5 ya explica la diferencia.
 
-**Git:** hay un commit local del 2026-10-19 sin subir y, además, cambios sin commitear del 2026-10-24: `config.json`, `CLAUDE.md`, `DEPENDENCIAS.txt`, `SESION-Y-USUARIOS.md`, `TFM.docx` y `PLANTILLA.docx`. Los `.docx` se **versionan a propósito** para compartirlos con el compañero; no añadirlos al `.gitignore`. El usuario hace el `git push`.
+**Git:**
+- Se trabaja en la rama **`develop`**, que sigue a `origin/develop` e incluye todo `main`.
+- Los `.docx` se **versionan a propósito** para compartirlos con el compañero; no añadirlos al `.gitignore`.
+- El usuario hace el `git push`.
 
 **Al cambiar el catálogo** (`template-catalog.ts`), ejecutar `npm run export:catalog` en `frontend/`, porque la API lee el JSON exportado.
 
@@ -68,7 +93,7 @@ Trabajo Fin de Máster. Plataforma de autoservicio para que PYMEs desplieguen ap
 - Nunca guardar secretos en el repo: usar variables de entorno, `.env.example` y Secrets Manager en AWS.
 - En la raíz solo están `frontend/` y `backend/`, más `DEPENDENCIAS.txt`, `SESION-Y-USUARIOS.md` (dónde se guardan usuarios y sesión), `TFM.docx` y `PLANTILLA.docx` (memoria del TFM y plantilla de UNIR, versionadas para el compañero), `CLAUDE.md`, `.gitignore` y `.vscode/` (D-13).
 - **Memoria del TFM:** al terminar cada fase, registrar lo hecho en el capítulo 4 de `TFM.docx` (en español, tono académico). Los capítulos 1 a 3 los escriben los autores: no tocarlos sin que lo pidan. No hay pandoc ni LibreOffice: se edita el XML y se valida con el skill docx.
-- Si algo es ambiguo, elegir la opción más simple que cumpla el objetivo y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-40**).
+- Si algo es ambiguo, elegir la opción más simple que cumpla el objetivo y anotarla en `backend/docs/decisiones.md` (siguiente número: **D-41**).
 - **Registrar toda dependencia, herramienta, extensión, provider de Terraform o imagen base en `DEPENDENCIAS.txt`** (con versión, ámbito, forma de instalación y fecha) y añadir una línea al historial del final.
 - El usuario suele tener su propio `ng serve` en el puerto 4200: hacer las pruebas en otro puerto y no matar su proceso. Excepción: para probar la GitHub App, el portal tiene que estar en el 4200 (Callback URL).
 
@@ -117,11 +142,11 @@ Este equipo es Windows, no macOS; el arranque difiere del bloque anterior.
   - protegidas con `roleGuard`.
 - Pruebas: `npx ng test --watch=false` (53). El catálogo se exporta a la API con `npm run export:catalog` (D-25). Arranque: `cd frontend && npx ng serve`.
 
-## Backend (`backend/`): nuevo alcance hecho, AWS simulado
+## Backend (`backend/`): nuevo alcance hecho, probado en modo real
 
-- Java 21, Spring Boot 3.5.16 y AWS SDK v2 2.56.0, con capas `domain`, `application` (servicios y puertos), `infrastructure` (mock/memory/aws/dynamodb/github/security/config) y `web`.
+- Java 21, Spring Boot 3.5.16 y AWS SDK v2 2.56.0, con capas `domain`, `application` (servicios y puertos), `infrastructure/entrypoints` (controladores, DTO, seguridad y errores: entrada), `infrastructure/adapters` (aws/dynamodb/github/memory/mock/security: salida) e `infrastructure/config` (D-27). Excepciones comunes en `application/shared`.
 - **Modos independientes:**
-  - `RELEASY_AWS_MODE=mock|real`: STS, Step Functions y DynamoDB, o memoria;
+  - `RELEASY_AWS_MODE=mock|real`: STS, Step Functions y DynamoDB, o memoria. En `real` necesita `RELEASY_STATE_MACHINE_ARN`, `AWS_REGION`, `RELEASY_PLATFORM_ACCOUNT_ID`, `RELEASY_AWS_ROLE_TEMPLATE_URL` y credenciales de la plataforma (`AWS_PROFILE`);
   - `RELEASY_GITHUB_MODE=mock|real`: GitHub App real (`RELEASY_GITHUB_APP_ID`, `_PRIVATE_KEY_PATH`, `_CLIENT_ID` y `_CLIENT_SECRET`; guía en `backend/docs/github-app.md`). Al conectar, el usuario autoriza con OAuth y la API comprueba que la instalación es suya (D-26).
 - **Autenticación (D-24):**
   - `POST /api/auth/register|login` devuelven un JWT HS256 (`RELEASY_JWT_SECRET`), con contraseñas en BCrypt.
@@ -130,11 +155,11 @@ Este equipo es Windows, no macOS; el arranque difiere del bloque anterior.
   - `/api/me/*` (`CLIENT`): `tenant`, `aws-connection`, `github-connection`, `github/repositories`, `apps`.
   - `/api/templates`.
   - `/api/tenants/**` (`ADMIN`, solo lectura).
-  - `/api/apps/{id}` y `/releases` (propietario o administrador; si no, 404).
+  - `/api/apps/{id}` y `GET`/`POST /releases` (propietario o administrador; si no, 404). El `POST` redespliega el último commit: 409 si ya tiene un release en curso o correcto (D-36).
   - Webhook `POST /api/webhooks/github` (HMAC).
 - **Piezas principales:**
   - Puertos: `GithubGateway` (`GithubAppClient` / `MockGithubGateway`), `AwsConnectionVerifier` (`StsAwsConnectionVerifier` / `MockAwsConnectionVerifier`) y `DeploymentOrchestrator`.
-  - `ReleaseLauncher` lanza los releases, tanto al crear la app (último commit de la rama) como desde el webhook.
+  - `ReleaseLauncher` lanza los releases al crear la app (último commit de la rama), desde el webhook y al redesplegar, con idempotencia por commit.
   - `TemplateCatalog` carga `resources/catalog/templates.json` (exportado del portal) y valida igual que el front.
 - **Arranque:**
   - F5 "ReleEasy API (mock)", o `cd backend && set -a; source .env; set +a; SPRING_PROFILES_ACTIVE=mock-fast ./mvnw spring-boot:run`.
@@ -142,11 +167,11 @@ Este equipo es Windows, no macOS; el arranque difiere del bloque anterior.
   - El `.env` necesita `RELEASY_JWT_SECRET`; ver `.env.example`.
 - **Pendiente:**
   - webhook de la app con URL pública;
-  - AWS real (fase 4).
+  - en modo real, marcar `RUNNING` y copiar la URL a la app (hoy el pipeline solo escribe el release; D-40).
 
-## Fase 4, Terraform y pipelines: `backend/deploy/` (pendiente, con el nuevo alcance)
+## Fase 4, Terraform y pipelines: `backend/deploy/` (hecha; ver D-28 a D-40 y `backend/deploy/README.md`)
 
-- Terraform >= 1.10, backend S3 con `use_lockfile = true`. Variables con descripción y validaciones. Validar con `terraform init -backend=false` y `terraform validate`. **Nunca `apply` sin confirmación.**
+- Terraform >= 1.10, backend S3 (**ojo:** el deploy aún no pasa `use_lockfile=true`; D-40). Variables con descripción y validaciones. Validar con `terraform init -backend=false` y `terraform validate`. **Nunca `apply` sin confirmación.**
 - `platform/` (cuenta de la plataforma): bucket de estados (versionado, cifrado y sin acceso público), tablas DynamoDB (`users`, `tenants`, `apps` y `releases`), ECR, CodeBuild (build y deploy), Step Functions e IAM con mínimo privilegio. El rol de CodeBuild asume `ReleEasyDeployRole` **con External ID** en la cuenta del cliente.
 - **Plantilla de CloudFormation del rol del cliente** (`releasy-deploy-role.yaml`): parámetros `PlatformAccountId` y `ExternalId`, permisos limitados a los servicios de las plantillas y salida `RoleArn`.
 - `templates/`: **tres módulos**, `angular-static`, `springboot-api` y `angular-springboot` (o módulos comunes `frontend` y `backend` compuestos). Cada opción del catálogo es una variable (`enable_waf`, `enable_rum`, `custom_domain`, `api_exposure = alb|api_gateway`, `instance_type`, `min/max_instances`, `cpu_target`, `detailed_monitoring`, `enable_xray`, `log_retention_days`, `env_vars`, `notification_email`…).
@@ -155,7 +180,9 @@ Este equipo es Windows, no macOS; el arranque difiere del bloque anterior.
 - `pipelines/`:
   - `buildspec-build.yml`: clona en el SHA (con el token de instalación de la GitHub App) y construye según la plantilla (`npm ci && ng build` en `/frontend` y/o `./mvnw -B verify` en `/backend`, más la imagen Docker; si no hay Dockerfile, `eclipse-temurin:21-jre`).
   - `buildspec-deploy.yml`: `terraform init` con backend parcial (`tenants/<tenantId>/<appId>/terraform.tfstate`), `plan` y `apply`, sube el front a S3, invalida CloudFront y escribe el estado en DynamoDB, también si falla.
-  - `state-machine.asl.json`: RUNNING → build → deploy → estado final, con Catch que marca `FAILED`.
+  - `state-machine.asl.json`: build → deploy → estado final, con Catch hacia `Failed`. El estado del release lo escriben los buildspec en DynamoDB; el ASL no escribe nada (un fallo antes de CodeBuild deja el release en `PENDING`; D-40).
+  - Credenciales (D-37): el entorno siempre es el de la plataforma; Terraform asume el rol del cliente en el provider (`TF_VAR_tenant_role_arn`/`TF_VAR_external_id`) y la CLI en subshells.
+  - Las plantillas se clonan de `develop` del repo público (D-34) y el dist pasa por `s3://<state>/artifacts/...`.
 
 ## Fase 5, documentación: `backend/docs/` (pendiente, en español)
 

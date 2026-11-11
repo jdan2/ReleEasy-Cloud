@@ -357,15 +357,6 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
 - **Coste/riesgo:** un bucket con un único objeto de pocos KB; la exposición pública se limita a una plantilla ya publicada en el repositorio. `force_destroy` permite destruirlo con `terraform destroy`.
 - **Verificación:** `terraform fmt` y `validate` correctos; no se ejecutó `apply`. Tests de API y del portal correctos.
 
-## D-35 · Plantilla del rol publicada en un bucket público de solo lectura gestionado por platform/
-
-- **Fecha:** 2026-11-07.
-- **Contexto:** el enlace *Quick-create* del portal apuntaba a un bucket inexistente (`releasy-public`), por lo que CloudFormation no podía cargar la plantilla.
-- **Decisión:** `platform/public-templates.tf` crea el bucket `releasy-public-<cuenta>` (nombre único derivado de la cuenta) y sube `bootstrap/releasy-deploy-role.yaml` como `cloudformation/releasy-deploy-role.yaml`. La política permite `s3:GetObject` a cualquiera **solo** sobre `cloudformation/*`; las ACL siguen bloqueadas y no hay listado. La plantilla no contiene secretos (el External ID es un parámetro `NoEcho`).
-- **Portal:** el backend expone `aws.roleTemplateUrl` y `aws.region` en el tenant (propiedades `releasy.aws.role-template-url`, variable `RELEASY_AWS_ROLE_TEMPLATE_URL`, y la región ya existente). El front arma el enlace con la consola regional (`https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/stacks/quickcreate`) y, si la URL viene vacía, muestra un aviso en lugar del botón.
-- **Coste/riesgo:** un bucket con un único objeto de pocos KB; la exposición pública se limita a una plantilla ya publicada en el repositorio. `force_destroy` permite su destrucción con `terraform destroy`.
-- **Verificación:** `terraform fmt` y `validate` correctos; no se ejecutó `apply`. Tests de API y del portal correctos.
-
 ## D-36 · Redespliegue manual
 
 - **Fecha:** 2026-11-08.
@@ -433,3 +424,20 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
   9. El release pasa a `FAILED` sin mensaje detallado (solo "revisa los logs de CodeBuild").
 - **Coste:** plataforma parada, cercano a cero (DynamoDB bajo demanda, CodeBuild y Step Functions por uso). `angular-static`: céntimos (CloudFront incluye 1 TB gratuito). WAF tendría un cargo mensual fijo. El NAT Gateway (~1 USD/día) pesa en `springboot-api` y `angular-springboot`. Coste real de la prueba: [completar tras revisar Cost Explorer].
 - **Runbooks:** pasos de despliegue y desmontaje en `backend/deploy/README.md`.
+
+## D-40 · Revisión de la Fase 4 y registro en el capítulo 4 del TFM
+
+- **Fecha:** 2026-11-10.
+- **Contexto:** tras descargar el trabajo de la rama `develop` (D-27 a D-39), se revisaron el código de la Fase 4 y los `.env` de la prueba real, y se reescribió el capítulo 4 de `TFM.docx` con lo implementado.
+- **Limitaciones nuevas** (se suman a las de D-39; en el TFM están numeradas como L-01 a L-13, Tabla 17):
+  1. **`angular-springboot`, CloudFront hacia el ALB:** el origen `/api/*` del módulo `frontend` usa `origin_protocol_policy = "https-only"`, pero el ALB del módulo `backend` solo tiene un listener HTTP en el puerto 80. Las peticiones a `/api/*` no llegarían al backend. Solución: `http-only` hacia el ALB con una cabecera secreta que el ALB compruebe, o un listener HTTPS con certificado de ACM.
+  2. **En modo real no se pasa por `RUNNING` ni se actualiza la URL de la app.** El pipeline escribe directamente `SUCCEEDED`/`FAILED` en `releasy-releases`; en modo mock ambas cosas las hace `ReleaseService` (`markRunning` y `markSucceeded`, que copia la URL a la app). `APPS_TABLE` se pasa al deploy, pero no se usa. El portal sigue mostrando la URL provisional `*.apps.releasy.local`.
+  3. **Releases huérfanos en `PENDING`:** si Step Functions falla antes de arrancar CodeBuild, el estado `Failed` del ASL no escribe nada en DynamoDB.
+  4. **Sin bloqueo del estado:** `buildspec-deploy.yml` no pasa `use_lockfile=true` al backend S3; dos releases simultáneos de la misma app podrían pisarse.
+  5. **Región:** las apps se despliegan en la región de la plataforma (`AWS_REGION` de CodeBuild) y el estimador usa precios de `eu-west-1`.
+  6. **Variables de entorno en el user-data** de las instancias: visibles en la plantilla de lanzamiento; no sirven para secretos.
+  7. **Etiquetas del catálogo:** se anuncian alarmas 4xx/5xx (front) y de memoria (backend), pero solo se crean las de 5xx, CPU y latencia.
+  8. El catálogo no pide `acm_certificate_arn`, que el dominio propio necesita.
+- **Configuración corregida:** `.env.example` traía `RELEASY_ROLE_TEMPLATE_URL`, que la API no lee (la propiedad `releasy.aws.role-template-url` se enlaza con `RELEASY_AWS_ROLE_TEMPLATE_URL`). Con el nombre incorrecto, el portal desactiva el botón *Quick-create*. Se deja solo el nombre correcto. También se eliminó la D-35 duplicada en este registro.
+- **TFM:** el capítulo 4 describe la plantilla del rol, los cuatro módulos de Terraform, la plataforma, el pipeline (credenciales por operación, Tabla 15), la prueba real y las limitaciones. Los capítulos 1 a 3 no se tocaron. Siguen diciendo que hay CI con GitHub Actions y que el portal se hace en el Sprint 3, y el 4.1.5 ya explica la diferencia.
+- **Verificación:** `./mvnw test` → 70 pruebas en verde; `ng test` → 55 en verde. `terraform validate` no se pudo repetir en esta sesión por falta de espacio en disco (el provider ocupa unos 700 MB); vale la validación de D-29 a D-37.
