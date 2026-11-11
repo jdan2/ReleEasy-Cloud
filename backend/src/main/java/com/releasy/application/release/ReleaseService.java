@@ -1,6 +1,6 @@
 package com.releasy.application.release;
 
-import com.releasy.application.NotFoundException;
+import com.releasy.application.shared.NotFoundException;
 import com.releasy.domain.app.App;
 import com.releasy.domain.app.AppRepository;
 import com.releasy.domain.release.Release;
@@ -48,7 +48,7 @@ public class ReleaseService {
         return releases.save(get(appId, releaseId).fail(error, clock.instant()));
     }
 
-    private Release get(String appId, String releaseId) {
+    public Release get(String appId, String releaseId) {
         return releases.findById(appId, releaseId).orElseThrow(() -> new NotFoundException("Release", releaseId));
     }
 

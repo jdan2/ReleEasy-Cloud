@@ -14,6 +14,8 @@ tfplan
 crash.log
 *.tfvars
 !*.tfvars.example
+*_override.tf
+override.tf
 .terraform.tfstate.lock.info
 
 # --- Node / Angular ---
@@ -37,3 +39,7 @@ target/
 !.vscode/settings.json
 !.vscode/launch.json
 .DS_Store
+
+# --- Notas de trabajo locales ---
+ACTUALIZACION-TFM-CAP4.md
+contexto_arquitect_nico_tesis_m_ster_plataforma_saas_gitops_para_pymes.md

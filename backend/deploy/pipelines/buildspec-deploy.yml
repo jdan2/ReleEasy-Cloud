@@ -1,0 +1,153 @@
+version: 0.2
+
+# -----------------------------------------------------------------------------
+# Fase de despliegue (proyecto CodeBuild releasy-deploy).
+#
+# Ejecuta terraform apply de la plantilla en la cuenta del cliente, sube el front a S3,
+# invalida CloudFront y escribe el estado del release en DynamoDB. El estado FAILED se
+# escribe tambien si el apply falla.
+#
+# Credenciales (D-37): el entorno del build es siempre el de la PLATAFORMA (releasy-codebuild):
+# backend S3 de Terraform, artefactos del bucket de estado y DynamoDB. La cuenta del cliente
+# (puede ser otra cuenta AWS) se alcanza asumiendo ReleEasyDeployRole: Terraform lo hace en los
+# providers aws (assume_role, TF_VAR_tenant_role_arn / TF_VAR_external_id) y los comandos de
+# CLI sobre recursos del cliente (s3 sync, cloudfront) lo hacen en un subshell.
+#
+# Variables de la maquina de estados: RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID,
+#   TENANT_ROLE_ARN, EXTERNAL_ID, TEMPLATE_ID,
+#   DIST_ARTIFACT_KEY (artifacts/<tenantId>/<appId>/<releaseId>/dist.tgz en STATE_BUCKET)
+# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET, RELEASES_TABLE, APPS_TABLE,
+#   RELEASEY_REPO_URL, RELEASEY_REPO_BRANCH (repo publico de ReleEasy del que se clonan las
+#   plantillas; por defecto https://github.com/jdan2/ReleEasy-Cloud y develop)
+# El deploy es NO_SOURCE: en install clona las plantillas y descarga el dist del build con las
+# credenciales de la plataforma (que se mantienen durante todo el build).
+# -----------------------------------------------------------------------------
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      - echo "Despliegue del release $RELEASE_ID (plantilla $TEMPLATE_ID)"
+      # Terraform en la imagen de CodeBuild.
+      - |
+        TF_VERSION=1.11.2
+        curl -fsSL -o /tmp/tf.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+        unzip -o /tmp/tf.zip -d /usr/local/bin
+      # El proyecto es NO_SOURCE: clonar el repo publico de ReleEasy para disponer de las
+      # plantillas (los modulos relativos ../modules/* requieren el arbol completo).
+      - |
+        export WORKDIR=$(pwd)
+        git clone --depth 1 --branch "${RELEASEY_REPO_BRANCH:-develop}" \
+          "${RELEASEY_REPO_URL:-https://github.com/jdan2/ReleEasy-Cloud}" "$WORKDIR/releasy-src"
+        export TEMPLATE_DIR="$WORKDIR/releasy-src/backend/deploy/templates/$TEMPLATE_ID"
+        if [ ! -d "$TEMPLATE_DIR" ]; then
+          echo "No existe la plantilla $TEMPLATE_ID en ${RELEASEY_REPO_URL:-https://github.com/jdan2/ReleEasy-Cloud} (${RELEASEY_REPO_BRANCH:-develop})" >&2
+          exit 1
+        fi
+      # Descargar el dist que dejo el build. Debe hacerse AQUI, con las credenciales de la
+      # plataforma (bucket de estado de la cuenta de la plataforma).
+      - |
+        if [ "$TEMPLATE_ID" = "angular-static" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          : "${DIST_ARTIFACT_KEY:=artifacts/$TENANT_ID/$APP_ID/$RELEASE_ID/dist.tgz}"
+          export DIST_DIR="$WORKDIR/site-dist"
+          mkdir -p "$DIST_DIR"
+          aws s3 cp "s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY" /tmp/dist.tgz --only-show-errors
+          tar -xzf /tmp/dist.tgz -C "$DIST_DIR"
+          if [ ! -f "$DIST_DIR/index.html" ]; then
+            echo "El dist descargado de s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY no contiene index.html" >&2
+            exit 1
+          fi
+        fi
+
+  pre_build:
+    commands:
+      # El estado RUNNING ya lo marco el backend al crear el release; aqui se despliega.
+      # El entorno del build conserva SIEMPRE las credenciales de la plataforma (rol
+      # releasy-codebuild): las usan el backend S3 de Terraform y DynamoDB. NO se exportan
+      # credenciales asumidas globalmente. Aqui solo se comprueba que el rol del cliente
+      # es asumible (falla pronto si el External ID o el trust policy no son correctos).
+      - |
+        aws sts assume-role \
+          --role-arn "$TENANT_ROLE_ARN" \
+          --role-session-name "releasy-deploy-check-$RELEASE_ID" \
+          --external-id "$EXTERNAL_ID" \
+          --query 'Credentials.Expiration' --output text > /dev/null
+        echo "Rol del cliente asumible: $TENANT_ROLE_ARN"
+      # Terraform asume el rol del cliente solo en los providers aws (assume_role en
+      # versions.tf). Se pasa por variables de entorno TF_VAR_* para que no aparezcan en el log.
+      - export TF_VAR_tenant_role_arn="$TENANT_ROLE_ARN"
+      - export TF_VAR_external_id="$EXTERNAL_ID"
+
+  build:
+    commands:
+      - cd "$TEMPLATE_DIR"
+      # Estado remoto por aplicacion en el bucket de la plataforma. El backend S3 usa las
+      # credenciales de la PLATAFORMA (las del entorno); los recursos del cliente se crean
+      # con el provider aws, que asume ReleEasyDeployRole via assume_role.
+      - |
+        terraform init -input=false \
+          -backend-config="bucket=$STATE_BUCKET" \
+          -backend-config="key=tenants/$TENANT_ID/$APP_ID/terraform.tfstate" \
+          -backend-config="region=$AWS_REGION"
+      - |
+        IMAGE="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/releasy-$TENANT_ID-$APP_NAME:$COMMIT_SHA"
+        TF_VARS=(-var="app_name=$APP_NAME" -var="tenant_slug=$TENANT_ID" -var="region=$AWS_REGION")
+        # Solo las plantillas con backend declaran container_image (angular-static no).
+        if grep -q 'variable "container_image"' variables.tf; then
+          TF_VARS+=(-var="container_image=$IMAGE")
+        fi
+        terraform apply -input=false -auto-approve "${TF_VARS[@]}"
+      # Recoger los outputs (URL, bucket y distribucion si hay front).
+      - export APP_URL=$(terraform output -raw url)
+      - export SITE_BUCKET=$(terraform output -raw bucket_name 2>/dev/null || echo "")
+      - export DIST_ID=$(terraform output -raw distribution_id 2>/dev/null || echo "")
+      # Si la plantilla tiene front, subir el build a S3 e invalidar CloudFront. Ambos son
+      # recursos de la cuenta del cliente: las credenciales asumidas se exportan SOLO dentro
+      # del subshell, de modo que despues el entorno sigue siendo el de la plataforma.
+      - |
+        if [ -n "$SITE_BUCKET" ] && [ -n "$DIST_DIR" ]; then
+          # DIST_DIR es el dist extraido en la fase install (index.html en la raiz).
+          (
+            CREDS=$(aws sts assume-role \
+              --role-arn "$TENANT_ROLE_ARN" \
+              --role-session-name "releasy-deploy-$RELEASE_ID" \
+              --external-id "$EXTERNAL_ID" \
+              --query 'Credentials' --output json)
+            export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.AccessKeyId')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.SecretAccessKey')
+            export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.SessionToken')
+            unset CREDS
+            aws s3 sync "$DIST_DIR" "s3://$SITE_BUCKET" --delete
+            if [ -n "$DIST_ID" ]; then
+              aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'
+            fi
+          )
+        fi
+
+  post_build:
+    commands:
+      # Escribir el estado final del release en DynamoDB (con las credenciales de la plataforma,
+      # que son las del entorno; el unset es inofensivo y solo garantiza que no haya otras).
+      - |
+        unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+        NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
+          STATUS="SUCCEEDED"
+          aws dynamodb update-item \
+            --table-name "$RELEASES_TABLE" \
+            --key "{\"appId\":{\"S\":\"$APP_ID\"},\"releaseId\":{\"S\":\"$RELEASE_ID\"}}" \
+            --update-expression "SET #s = :s, #u = :u, updatedAt = :t" \
+            --expression-attribute-names '{"#s":"status","#u":"url"}' \
+            --expression-attribute-values "{\":s\":{\"S\":\"$STATUS\"},\":u\":{\"S\":\"$APP_URL\"},\":t\":{\"S\":\"$NOW\"}}"
+        else
+          STATUS="FAILED"
+          aws dynamodb update-item \
+            --table-name "$RELEASES_TABLE" \
+            --key "{\"appId\":{\"S\":\"$APP_ID\"},\"releaseId\":{\"S\":\"$RELEASE_ID\"}}" \
+            --update-expression "SET #s = :s, errorMessage = :e, updatedAt = :t" \
+            --expression-attribute-names '{"#s":"status"}' \
+            --expression-attribute-values "{\":s\":{\"S\":\"$STATUS\"},\":e\":{\"S\":\"El despliegue fallo; revisa los logs de CodeBuild.\"},\":t\":{\"S\":\"$NOW\"}}"
+        fi
+      - echo "Release $RELEASE_ID -> $STATUS"

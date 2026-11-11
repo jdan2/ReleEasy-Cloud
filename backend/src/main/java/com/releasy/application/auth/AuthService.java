@@ -1,6 +1,6 @@
 package com.releasy.application.auth;
 
-import com.releasy.application.ConflictException;
+import com.releasy.application.shared.ConflictException;
 import com.releasy.application.port.TokenIssuer;
 import com.releasy.application.tenant.TenantService;
 import com.releasy.domain.shared.Ids;

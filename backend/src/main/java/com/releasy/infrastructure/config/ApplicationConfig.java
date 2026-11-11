@@ -74,8 +74,9 @@ public class ApplicationConfig {
 
     @Bean
     AppService appService(AppRepository apps, TenantService tenantService, TemplateCatalog catalog,
-                          GithubGateway github, ReleaseLauncher launcher, Clock clock, ReleasyProperties properties) {
-        return new AppService(apps, tenantService, catalog, github, launcher,
+                          GithubGateway github, ReleaseLauncher launcher, ReleaseService releaseService,
+                          Clock clock, ReleasyProperties properties) {
+        return new AppService(apps, tenantService, catalog, github, launcher, releaseService,
                 new AppUrlPolicy(properties.apps().baseDomain()), clock);
     }
 

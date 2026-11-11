@@ -1,0 +1,136 @@
+version: 0.2
+
+# -----------------------------------------------------------------------------
+# Fase de construccion (proyecto CodeBuild releasy-build).
+#
+# Step Functions arranca este build con las variables del DeploymentRequest. Clona el
+# repositorio del cliente en el commit indicado (con el token de la GitHub App), construye
+# segun la plantilla y, si la plantilla tiene backend, publica la imagen Docker en el ECR
+# de la cuenta del cliente (al que se accede asumiendo ReleEasyDeployRole en un subshell).
+# El entorno del build mantiene siempre las credenciales de la plataforma (D-37).
+#
+# Variables de entorno (las inyecta la maquina de estados):
+#   RELEASE_ID, TENANT_ID, APP_ID, APP_NAME, ACCOUNT_ID, TENANT_ROLE_ARN, EXTERNAL_ID,
+#   REPOSITORY (owner/repo), BRANCH, COMMIT_SHA, TEMPLATE_ID,
+#   DIST_ARTIFACT_KEY (artifacts/<tenantId>/<appId>/<releaseId>/dist.tgz en STATE_BUCKET)
+# Si la plantilla tiene front, el build sube el dist comprimido a esa clave y el deploy lo recoge.
+# Variables del proyecto (platform/codebuild.tf): STATE_BUCKET, RELEASES_TABLE
+# Secreto: GITHUB_TOKEN (token de instalacion de la GitHub App, desde Secrets Manager)
+# -----------------------------------------------------------------------------
+
+env:
+  shell: bash
+  # El token de la GitHub App se inyecta desde Secrets Manager (configurado en el proyecto).
+  # secrets-manager:
+  #   GITHUB_TOKEN: releasy/github-app-token
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+      java: corretto21
+    commands:
+      - echo "Preparando el build del release $RELEASE_ID (plantilla $TEMPLATE_ID)"
+
+  pre_build:
+    commands:
+      # El entorno conserva las credenciales de la plataforma (bucket de estado, DynamoDB).
+      # El rol del cliente solo se asume en un subshell para el push al ECR (fase build).
+      # Aqui solo se comprueba que es asumible (con External ID) para fallar pronto.
+      - |
+        aws sts assume-role \
+          --role-arn "$TENANT_ROLE_ARN" \
+          --role-session-name "releasy-build-check-$RELEASE_ID" \
+          --external-id "$EXTERNAL_ID" \
+          --query 'Credentials.Expiration' --output text > /dev/null
+        echo "Rol del cliente asumible: $TENANT_ROLE_ARN"
+      # Clonar el repositorio del cliente en el commit exacto, con el token de la GitHub App.
+      - git clone "https://x-access-token:$GITHUB_TOKEN@github.com/$REPOSITORY.git" repo
+      - cd repo && git checkout "$COMMIT_SHA" && cd ..
+
+  build:
+    commands:
+      # Construir el front si la plantilla lo incluye.
+      - |
+        if [ "$TEMPLATE_ID" = "angular-static" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          echo "== Build del front Angular =="
+          (cd repo/frontend && npm ci && npm run build)
+        fi
+      # Empaquetar el dist del front y subirlo al bucket de la plataforma para que el deploy
+      # (otro proyecto CodeBuild) lo recoja. Clave: artifacts/<tenant>/<app>/<release>/dist.tgz.
+      - |
+        if [ "$TEMPLATE_ID" = "angular-static" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          : "${DIST_ARTIFACT_KEY:=artifacts/$TENANT_ID/$APP_ID/$RELEASE_ID/dist.tgz}"
+          DIST_DIR=$(find repo/frontend/dist -maxdepth 2 -name browser -type d | head -n1)
+          if [ -z "$DIST_DIR" ]; then
+            INDEX=$(find repo/frontend/dist -maxdepth 3 -name index.html | head -n1)
+            [ -n "$INDEX" ] && DIST_DIR=$(dirname "$INDEX")
+          fi
+          if [ -z "$DIST_DIR" ]; then
+            echo "No se encontro el dist del front en repo/frontend/dist" >&2
+            exit 1
+          fi
+          tar -C "$DIST_DIR" -czf /tmp/dist.tgz .
+          # El bucket de estado es de la plataforma: se sube con las credenciales del entorno
+          # (plataforma), nunca con las del cliente.
+          aws s3 cp /tmp/dist.tgz "s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY" --only-show-errors
+          echo "Dist publicado en s3://$STATE_BUCKET/$DIST_ARTIFACT_KEY"
+        fi
+      # Construir el backend y la imagen Docker si la plantilla lo incluye.
+      - |
+        if [ "$TEMPLATE_ID" = "springboot-api" ] || [ "$TEMPLATE_ID" = "angular-springboot" ]; then
+          echo "== Build del backend Spring Boot =="
+          (cd repo/backend && ./mvnw -B -ntp verify)
+
+          # Si el repo no trae Dockerfile, se usa una imagen base de Java 21.
+          if [ ! -f repo/backend/Dockerfile ]; then
+            cat > repo/backend/Dockerfile <<'EOF'
+        FROM eclipse-temurin:21-jre
+        WORKDIR /app
+        COPY target/*.jar app.jar
+        EXPOSE 8080
+        ENTRYPOINT ["java","-jar","/app/app.jar"]
+        EOF
+          fi
+
+          ECR_REPO="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/releasy-$TENANT_ID-$APP_NAME"
+          # El ECR es de la cuenta del cliente: las credenciales asumidas se exportan SOLO en
+          # este subshell; despues el entorno sigue siendo el de la plataforma.
+          (
+            CREDS=$(aws sts assume-role \
+              --role-arn "$TENANT_ROLE_ARN" \
+              --role-session-name "releasy-build-$RELEASE_ID" \
+              --external-id "$EXTERNAL_ID" \
+              --query 'Credentials' --output json)
+            export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.AccessKeyId')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.SecretAccessKey')
+            export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.SessionToken')
+            unset CREDS
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+            docker build -t "$ECR_REPO:$COMMIT_SHA" -t "$ECR_REPO:latest" repo/backend
+            docker push "$ECR_REPO:$COMMIT_SHA"
+            docker push "$ECR_REPO:latest"
+          )
+        fi
+
+  post_build:
+    commands:
+      # Si la construccion fallo, marcar el release como FAILED en DynamoDB (con las
+      # credenciales de la plataforma, que son las del entorno). Asi un fallo de
+      # compilacion no deja el release colgado en RUNNING; la fase de deploy no llega a
+      # ejecutarse. Si el build fue correcto, el estado lo gestiona despues el deploy.
+      - |
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" != "1" ]; then
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+          aws dynamodb update-item \
+            --table-name "$RELEASES_TABLE" \
+            --key "{\"appId\":{\"S\":\"$APP_ID\"},\"releaseId\":{\"S\":\"$RELEASE_ID\"}}" \
+            --update-expression "SET #s = :s, errorMessage = :e, updatedAt = :t" \
+            --expression-attribute-names '{"#s":"status"}' \
+            --expression-attribute-values "{\":s\":{\"S\":\"FAILED\"},\":e\":{\"S\":\"La construccion fallo; revisa los logs de CodeBuild.\"},\":t\":{\"S\":\"$NOW\"}}"
+          echo "Build del release $RELEASE_ID: FAILED"
+        else
+          echo "Build del release $RELEASE_ID terminado."
+        fi

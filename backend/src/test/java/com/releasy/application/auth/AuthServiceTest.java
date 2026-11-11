@@ -1,13 +1,13 @@
 package com.releasy.application.auth;
 
-import com.releasy.application.ConflictException;
+import com.releasy.application.shared.ConflictException;
 import com.releasy.application.tenant.TenantService;
 import com.releasy.domain.tenant.ConnectionStatus;
 import com.releasy.domain.tenant.Tenant;
 import com.releasy.domain.user.Role;
 import com.releasy.domain.user.User;
-import com.releasy.infrastructure.memory.InMemoryTenantRepository;
-import com.releasy.infrastructure.memory.InMemoryUserRepository;
+import com.releasy.infrastructure.adapters.memory.InMemoryTenantRepository;
+import com.releasy.infrastructure.adapters.memory.InMemoryUserRepository;
 import com.releasy.support.MutableClock;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;

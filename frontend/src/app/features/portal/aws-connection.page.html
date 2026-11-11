@@ -47,7 +47,14 @@
             CloudFormation con los datos ya rellenos; solo tienes que marcar la casilla de IAM y pulsar
             <em>Crear stack</em>.
           </p>
-          <a class="btn-primary mt-4" [href]="quickCreateUrl()" target="_blank" rel="noopener">Abrir en la consola de AWS ↗</a>
+          @if (quickCreateUrl(); as url) {
+            <a class="btn-primary mt-4" [href]="url" target="_blank" rel="noopener">Abrir en la consola de AWS ↗</a>
+          } @else {
+            <p class="alert-error mt-4" role="alert">
+              El enlace de creación del rol aún no está disponible: la plantilla no está publicada. Contacta con el
+              administrador de ReleEasy.
+            </p>
+          }
           <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt class="text-slate-500">Cuenta de ReleEasy</dt>

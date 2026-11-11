@@ -1,7 +1,7 @@
 package com.releasy.application.aws;
 
-import com.releasy.application.InvalidRequestException;
-import com.releasy.application.NotFoundException;
+import com.releasy.application.shared.InvalidRequestException;
+import com.releasy.application.shared.NotFoundException;
 import com.releasy.application.port.AwsConnectionVerifier;
 import com.releasy.domain.tenant.AwsConnection;
 import com.releasy.domain.tenant.Tenant;

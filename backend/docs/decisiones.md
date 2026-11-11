@@ -260,3 +260,184 @@ Registro de decisiones tomadas cuando el enunciado era ambiguo o contradictorio.
   - Portal: `githubClientId` en `config.json` (es público).
 - **Mock:** cualquier código vale. El usuario es `usuario-demo` y el ID de instalación se calcula a partir del código.
 - **Resuelve** la limitación de seguridad de D-25.
+## D-27 · Reorganización de paquetes: adaptadores de entrada y de salida explícitos
+- **Fecha:** 2026-10-25.
+- **Contexto:** la arquitectura ya era hexagonal (dominio aislado, puertos en `application/port` y adaptadores en `infrastructure`), pero la separación entre adaptadores **de entrada** (quién llama a la aplicación) y **de salida** (a quién llama la aplicación) no era visible en la estructura de carpetas. Además, tres excepciones transversales estaban sueltas en la raíz de `application`, mientras el resto se agrupaba por feature.
+- **Decisión:** reordenar los paquetes para que la frontera entrada/salida sea explícita, siguiendo la convención de la industria (p. ej. el arquetipo de Bancolombia usa `entrypoints`/`adapters`):
+  - `web/` → `infrastructure/entrypoints/` (controladores REST, webhook, DTOs, seguridad y manejador de excepciones): son los **adaptadores de entrada** (driving).
+  - `infrastructure/{github,aws,dynamodb,memory,mock,security}/` → `infrastructure/adapters/…`: son los **adaptadores de salida** (driven).
+  - Las excepciones transversales (`ConflictException`, `InvalidRequestException`, `NotFoundException`) pasan a `application/shared/`, en simetría con `domain/shared`.
+  - `infrastructure/config/` **no se mueve**: es wiring de Spring, ni entrada ni salida.
+- **Qué NO se cambió, y por qué:**
+  - Los **enums** (`Role`, `ReleaseStatus`, `ConnectionStatus`) siguen junto al concepto de dominio al que pertenecen. Agruparlos en un paquete `enums` separaría cada enum de su significado: se organiza por concepto de negocio, no por mecanismo del lenguaje.
+  - No se añaden sufijos como `AppModel`/`AppDto`: el paquete ya comunica el rol (`domain/app/App` es el modelo; `…entrypoints/dto/AppResponse` es el DTO).
+  - Los casos de uso siguen en `application` (no se mueven a `domain`, a diferencia del arquetipo de Bancolombia): mantener dominio y aplicación separados es más fiel a la distinción entre reglas de negocio y orquestación.
+  - No se introducen *mappers* dedicados por frontera: para este tamaño, los métodos `from(...)` en los DTO son suficientes y evitan ceremonia.
+- **Verificación:** `./mvnw test` → 62 pruebas en verde, incluida la de integración que levanta el contexto de Spring Boot. No quedaron referencias a los paquetes antiguos.
+## D-28 · Bootstrap del rol del cliente con CloudFormation, y el resto con Terraform
+- **Fecha:** 2026-10-26.
+- **Contexto:** la plataforma despliega la infraestructura del cliente con Terraform asumiendo el rol `ReleEasyDeployRole` en su cuenta (D-18). Pero ese rol tiene que existir antes de poder asumirlo: es un problema de arranque (*bootstrap*). Había que decidir cómo lo crea el cliente.
+- **Decisión:** el rol se crea con una plantilla de **CloudFormation** (`backend/deploy/bootstrap/releasy-deploy-role.yaml`), que el portal ofrece como enlace *Quick-create*. El resto de la infraestructura (plataforma y plantillas de aplicaciones) es **Terraform**.
+  - **Motivo:** el enlace *Quick-create* de CloudFormation abre la consola del cliente con la plantilla ya cargada; el cliente solo revisa y pulsa "Crear". No instala la CLI, no ejecuta `terraform apply` ni custodia ningún estado. Es coherente con la propuesta de valor ("sin conocimientos de DevOps") y es el patrón habitual de las herramientas BYOA del sector (Datadog, Vanta, etc.). Hacerlo con Terraform obligaría a la PYME a hacer DevOps justo para empezar a no hacerlo.
+  - **Alcance de la plantilla:** parámetros `PlatformAccountId` y `ExternalId` (este con `NoEcho`); política de confianza que solo admite a la cuenta de la plataforma y exige el External ID (`sts:ExternalId`); permisos de despliegue agrupados por área (frontend, backend, observabilidad, opcionales e IAM) y acotados a los servicios de las plantillas. Los buckets S3 se limitan al prefijo `releasy-*` y la creación de roles/perfiles IAM al prefijo `releasy-*`. Salida: `RoleArn`, que el cliente pega en el portal.
+- **Verificación:** `aws cloudformation validate-template` correcto (solo sintaxis; no crea ningún stack ni recurso, sin coste). AWS informa de que requiere `CAPABILITY_NAMED_IAM`, lo normal al declarar un rol con nombre fijo.
+- **Mejora futura:** algunos permisos usan comodines (p. ej. `autoscaling:*`) para no quedarse cortos; cuando se cierren las plantillas de Terraform se conocerá la lista exacta de acciones y podrá afinarse el mínimo privilegio.
+- **Relación:** implementa el lado del cliente de D-18; es el primer entregable de la Fase 4 (infraestructura como código).
+## D-29 · Plantillas de Terraform por composición de módulos; primera plantilla angular-static
+- **Fecha:** 2026-10-26.
+- **Contexto:** las tres plantillas del catálogo (`angular-static`, `springboot-api`, `angular-springboot`) comparten piezas (red, front, backend, observabilidad). Había que decidir cómo estructurarlas para no duplicar código.
+- **Decisión:** cada plantilla es una composición raíz en `backend/deploy/templates/<plantilla>/` que usa **módulos reutilizables** en `templates/modules/` (`frontend`, y más adelante `network`, `backend`, `observability`). La primera implementada es `angular-static`, que usa solo `modules/frontend`.
+  - **Mapeo opción→variable:** cada opción del formulario del portal es una variable de Terraform (`waf`→`enable_waf`, `front_alarms`→`enable_alarms`, `front_rum`→`enable_rum`, `custom_domain`/`domain_name`, `notification_email`), de modo que `options{}` del `DeploymentRequest` se traduce directamente a infraestructura.
+  - **Frontend:** bucket S3 privado (versionado y cifrado) + CloudFront con **Origin Access Control** (el bucket nunca es público), enrutado SPA (403/404 → `index.html`), y como opcionales WAF, alarmas con SNS por email, RUM y dominio propio con ACM. El módulo admite `api_origin_domain` para enrutar `/api/*` al backend (lo usará la plantilla combinada; en `angular-static` queda vacío).
+  - **Dos proveedores AWS:** la región del cliente y `us-east-1`, obligatoria para WAF y las métricas de CloudFront. El módulo lo declara con `configuration_aliases`.
+  - **Estado remoto:** el bloque `backend "s3"` se deja vacío; el pipeline inyecta la clave `tenants/<tenantId>/<appId>/terraform.tfstate` con `-backend-config`. En local se valida con `-backend=false`.
+- **Verificación:** `terraform init -backend=false` (provider AWS 5.100.0), `terraform validate` → "Success! The configuration is valid.", y `terraform fmt -check` sin cambios. No se ejecutó `apply`; no se creó ningún recurso.
+- **Relación:** segundo entregable de la Fase 4, sobre el contrato `DeploymentOrchestrator.DeploymentRequest` ya existente.
+## D-30 · Plantilla springboot-api: EC2 con Auto Scaling, ALB, ECR y API Gateway opcional
+- **Fecha:** 2026-10-26.
+- **Contexto:** la plantilla del backend Java. Se evaluó de nuevo cómo ejecutar el contenedor (reabriendo el debate EC2+ASG vs ECS sobre EC2 vs ECS Fargate).
+- **Decisión:** se mantiene la D-23: el backend corre como **un contenedor por instancia EC2 en un Auto Scaling Group detrás de un ALB**, sin orquestador de contenedores. ECS (en cualquiera de sus modos) se descarta porque añade una capa de orquestación que este caso —un contenedor por aplicación— no necesita, y rompería la coherencia con el catálogo, el estimador de costes y la memoria, que hablan de "EC2 Auto Scaling".
+- **Estructura (composición de módulos, D-29):** la plantilla `templates/springboot-api` compone tres módulos reutilizables:
+  - **`network`:** VPC con subredes públicas (ALB) y privadas (instancias), en 2 zonas, con Internet Gateway y NAT (único por defecto, para contener coste).
+  - **`backend`:** ECR, rol de instancia (lectura de ECR, logs, SSM y X-Ray opcional), launch template con user-data que instala Docker, se autentica contra ECR y arranca el contenedor (`docker run`), ASG con **instance refresh** (rolling + rollback automático), autoescalado por CPU (target tracking, solo si `max_instances > min_instances`), ALB con health check en `/actuator/health`, y **API Gateway (HTTP API) opcional** con VPC Link y throttling cuando `api_exposure = api_gateway` (entonces el ALB pasa a interno).
+  - **`observability`:** grupo de logs con retención configurable, SNS con aviso por email y alarmas de CPU (ASG), errores 5xx y latencia p95 (ALB).
+- **Mapeo opción→variable:** `instance_type`, `min_instances`, `max_instances`, `cpu_target`, `api_exposure`, `api_throttle_rps`, `log_retention_days`, `backend_alarms`→`enable_alarms`, `detailed_monitoring`, `xray_tracing`→`enable_xray`, `env_vars`, `notification_email`.
+- **Detalle técnico (dependencia circular):** `backend` necesita el nombre del grupo de logs y `observability` necesita el ASG y el ALB de `backend`. Para no crear un ciclo entre módulos, el **nombre del grupo de logs se fija en la composición** (`local.log_group_name = "/releasy/<prefijo>"`) y se pasa como literal a ambos módulos; así `backend` no depende del recurso que crea `observability`.
+- **Verificación:** `terraform init -backend=false` (3 módulos, provider AWS 5.100.0), `terraform validate` → "Success! The configuration is valid.", `terraform fmt` sin cambios pendientes. No se ejecutó `apply`; no se creó ningún recurso.
+- **Mejora futura:** los nombres de ALB y target group se truncan a 32 caracteres (límite de AWS); con slugs largos podrían colisionar. Conviene derivar un sufijo corto determinista cuando se afine la plantilla.
+## D-31 · Plantilla angular-springboot: front y API en un mismo dominio
+- **Fecha:** 2026-10-26.
+- **Contexto:** la tercera plantilla del catálogo combina un front Angular y una API Spring Boot. El reto es servir ambos bajo el mismo dominio para evitar CORS.
+- **Decisión:** `templates/angular-springboot` **compone los módulos ya existentes** `network`, `backend`, `frontend` y `observability`, sin duplicar código. CloudFront es el punto de entrada público: sirve el front desde S3 y **enruta `/api/*` al ALB del backend** (comportamiento `ordered_cache_behavior` del módulo `frontend`, que recibe `api_origin_domain = module.backend.alb_dns_name`). Así front y API comparten dominio y no hay CORS.
+  - En esta plantilla el backend se fuerza a `api_exposure = "alb"`: el punto público es CloudFront hablando con el ALB, por lo que API Gateway no se usa aquí (sí está disponible en `springboot-api`).
+  - Reúne las opciones de las dos plantillas base: las del front (`waf`, `front_alarms`, `front_rum`, dominio propio) y las del backend (`instance_type`, `min/max_instances`, `cpu_target`, `log_retention_days`, `backend_alarms`, `detailed_monitoring`, `enable_xray`, `env_vars`), con `notification_email` común.
+- **Verificación:** `terraform init -backend=false` (4 módulos, provider AWS 5.100.0), `terraform validate` → "Success! The configuration is valid.", `terraform fmt` sin cambios. No se ejecutó `apply`.
+- **Resultado:** con esto quedan **las tres plantillas del catálogo** (`angular-static`, `springboot-api`, `angular-springboot`) escritas y validadas. Pendiente de la Fase 4: infraestructura de la plataforma (`platform/`) y el pipeline (`pipelines/`).
+## D-32 · Infraestructura de la plataforma (platform/) en Terraform
+- **Fecha:** 2026-10-26.
+- **Contexto:** las plantillas describen la infraestructura de las apps del cliente, pero hace falta la infraestructura de la propia plataforma (cuenta de ReleEasy) que ejecuta los despliegues y guarda los datos. Se crea una sola vez.
+- **Decisión:** `backend/deploy/platform/` (Terraform) define:
+  - **Estado (`storage.tf`):** bucket S3 para el estado de Terraform de las apps (versionado, cifrado con KMS, sin acceso público; clave `tenants/<tenantId>/<appId>/terraform.tfstate`) y las **cuatro tablas DynamoDB** del backend en modo real. Las claves e índices **coinciden exactamente con el modelo del backend** (`infrastructure/adapters/dynamodb`): `users` (partición `email`), `tenants` (partición `tenantId`), `apps` (partición `appId` + GSI `tenantId-index` y `repository-index`) y `releases` (partición `appId` + ordenación `releaseId`). `PAY_PER_REQUEST` y point-in-time recovery.
+  - **IAM (`iam.tf`):** rol de CodeBuild que puede escribir logs, leer/escribir el estado en S3, actualizar el estado del release en DynamoDB, autenticarse contra ECR, leer el secreto de la GitHub App y, sobre todo, **asumir `ReleEasyDeployRole`** (`sts:AssumeRole` sobre `arn:aws:iam::*:role/ReleEasyDeployRole`; la confianza real la impone la política del rol del cliente, con cuenta de plataforma + External ID). Rol de Step Functions que solo arranca y vigila CodeBuild.
+  - **CodeBuild (`codebuild.tf`):** dos proyectos, `releasy-build` (con `privileged_mode` para construir imágenes Docker) y `releasy-deploy`. Sus buildspec se leen de `../pipelines/` (bloque siguiente).
+  - **Step Functions (`stepfunctions.tf`):** máquina de estados `build → deploy → Succeeded`, con `Catch` que lleva a `Failed`. La entrada es el `DeploymentRequest` que envía el backend; cada paso traslada sus campos a CodeBuild como `EnvironmentVariablesOverride`. Su ARN es el `RELEASY_STATE_MACHINE_ARN` del backend en modo real.
+- **Verificación:** `terraform init -backend=false` (provider AWS 5.100.0), `terraform validate` → "Success! The configuration is valid.", `terraform fmt` sin cambios. No se ejecutó `apply`.
+- **Nota de coste:** a diferencia de las plantillas (que solo existen cuando hay apps), estos recursos serían **permanentes** si se aplicaran. DynamoDB en modo bajo demanda y CodeBuild por uso mantienen el coste en reposo cercano a cero, pero conviene tenerlo presente antes de un `apply` real.
+- **Relación:** cierra el lado de la plataforma del flujo BYOA; el backend ya tenía el puerto `StepFunctionsDeploymentOrchestrator` preparado para disparar esta máquina de estados.
+## D-33 · Pipelines de build y deploy; cierre de la Fase 4
+- **Fecha:** 2026-10-26.
+- **Contexto:** faltaban los scripts que la máquina de estados ejecuta en CodeBuild para convertir un release en infraestructura real.
+- **Decisión:** `backend/deploy/pipelines/` contiene:
+  - **`buildspec-build.yml`:** asume `ReleEasyDeployRole` en la cuenta del cliente (con External ID), clona el repositorio en el `commitSha` con el token de la GitHub App, construye según `templateId` (`npm ci && npm run build` para el front y/o `./mvnw -B verify` para el backend) y, si hay backend, construye la imagen Docker (genera un `Dockerfile` con base `eclipse-temurin:21-jre` si el repo no trae uno) y la publica en el ECR del cliente.
+  - **`buildspec-deploy.yml`:** instala Terraform, asume el rol, ejecuta `terraform init` con backend parcial (clave `tenants/<tenantId>/<appId>/terraform.tfstate` en el bucket de la plataforma) y `terraform apply` de la plantilla con las variables del release; sube el front a S3, invalida CloudFront y escribe el estado final del release en DynamoDB. El contrato de atributos (`status`, `url`, `errorMessage`, `updatedAt`; clave `appId`+`releaseId`) coincide con `ReleaseItem`. El estado `FAILED` también se escribe si el apply falla.
+  - **`state-machine.asl.json`:** copia canónica en ASL de la definición que `platform/stepfunctions.tf` genera con `jsonencode`.
+- **Verificación:** los dos buildspec validan como YAML y el `asl.json` como JSON; `platform/` revalida con `terraform validate` ("Success!") al leer los buildspec reales con `file()`. No se ejecutó `apply`.
+- **Limitaciones conocidas (para un `apply` real):**
+  1. El backend S3 del estado necesita credenciales de la **plataforma**, mientras que el `provider` del apply usa las credenciales **asumidas** del cliente. En el buildspec se asume el rol antes del `init`; para separarlos limpiamente conviene un bloque `assume_role` en el `provider` (no en las credenciales de proceso) o `AWS_PROFILE` para el backend. Queda anotado para el despliegue real.
+  2. El token de la GitHub App (`GITHUB_TOKEN`) debe inyectarse desde Secrets Manager; el proyecto CodeBuild lo tiene preparado pero comentado.
+  3. Los nombres de ALB/target group se truncan a 32 caracteres (ver D-30).
+- **Estado:** con esto, la **Fase 4 queda completa y validada** (bootstrap, tres plantillas, plataforma y pipelines), sin `apply`. El flujo de extremo a extremo (front → backend → Step Functions → CodeBuild → Terraform en la cuenta del cliente) está escrito; solo falta activar el modo `real` del backend y ejecutar un `apply` controlado para probarlo contra AWS.
+
+## D-34 · Origen de las plantillas y traspaso del dist entre build y deploy
+- **Fecha:** 2026-11-07.
+- **Contexto:** `releasy-build` y `releasy-deploy` son proyectos CodeBuild `NO_SOURCE` independientes. El deploy no tenía las plantillas (`cd deploy/templates/$TEMPLATE_ID` fallaba) y el `dist` del front construido en el build no llegaba al deploy.
+- **Decisión A (plantillas):** el deploy clona el repo público de ReleEasy con `git clone --depth 1` y usa `backend/deploy/templates/$TEMPLATE_ID` del clon (se clona el árbol completo porque las plantillas referencian `../modules/*`). La URL y la rama llegan como variables de entorno del proyecto `releasy-deploy`: `RELEASEY_REPO_URL` (por defecto `https://github.com/jdan2/ReleEasy-Cloud`) y `RELEASEY_REPO_BRANCH` (por defecto `develop`), alimentadas por las variables de plataforma `releasy_repo_url` y `releasy_repo_branch`. Sin secretos.
+- **Decisión B (dist):** el build comprime el contenido de `dist/.../browser` en `dist.tgz` y lo sube a `s3://<STATE_BUCKET>/artifacts/<tenantId>/<appId>/<releaseId>/dist.tgz` con credenciales de la plataforma. La clave se calcula una sola vez en la máquina de estados (`States.Format`) y se pasa a ambas fases como `DIST_ARTIFACT_KEY`; cada buildspec trae un valor de respaldo con el mismo formato. El deploy lo descarga en `install` (antes de asumir el rol del cliente), lo extrae en un directorio local y, tras el `apply`, lo sincroniza al bucket del sitio (`aws s3 sync`) e invalida CloudFront. `angular-static` no recibe la ruta del dist por Terraform: su contrato sigue siendo el sync posterior al `apply` (D-33).
+- **IAM:** sin cambios funcionales. `releasy-codebuild` ya tiene `s3:GetObject/PutObject/DeleteObject/ListBucket` sobre el bucket de estado y `bucket/*`, lo que cubre `artifacts/*`; el cifrado usa la clave gestionada `aws/s3` de la misma cuenta. Solo se amplió el comentario del statement.
+- **Corrección incluida:** `-var="container_image=..."` solo se pasa a plantillas que declaran esa variable (`angular-static` no la declara y el `apply` fallaba). También se evita que la invalidación de CloudFront devuelva código distinto de 0 si no hay distribución.
+- **Verificación:** `terraform fmt`, `init -backend=false` y `validate` correctos en `platform/` y en `templates/angular-static`; buildspec parseados como YAML y `state-machine.asl.json` como JSON; nombres de variables revisados entre máquina de estados y ambos buildspec. No se ejecutó `apply`; el cambio en `platform/` es una actualización in-place de los dos proyectos CodeBuild y la máquina de estados.
+- **Limitaciones:** el clon sigue la rama, no un commit fijo (las plantillas pueden cambiar entre builds; fijar un tag o commit si se quiere reproducibilidad); los artefactos de `artifacts/` no caducan (pendiente una regla de ciclo de vida); sigue vigente la limitación de D-33 sobre las credenciales del backend S3; con `GITHUB_TOKEN` vacío y repo público, el clone `https://x-access-token:@github.com/...` del build debería funcionar, pero si fallase habría que clonar sin credenciales cuando el token esté vacío.
+
+## D-35 · Plantilla del rol publicada en un bucket público de solo lectura gestionado por platform/
+
+- **Fecha:** 2026-11-07.
+- **Contexto:** el enlace *Quick-create* del portal apuntaba a un bucket inexistente (`releasy-public`), por lo que CloudFormation no podía cargar la plantilla.
+- **Decisión:** `platform/public-templates.tf` crea el bucket `releasy-public-<cuenta>` (nombre único derivado de la cuenta) y sube `bootstrap/releasy-deploy-role.yaml` como `cloudformation/releasy-deploy-role.yaml`. La política permite `s3:GetObject` a cualquiera **solo** sobre `cloudformation/*`; las ACL siguen bloqueadas y no hay listado. La plantilla no contiene secretos (el External ID es un parámetro `NoEcho`).
+- **Portal:** el backend expone `aws.roleTemplateUrl` y `aws.region` en el tenant (propiedad `releasy.aws.role-template-url`, variable `RELEASY_AWS_ROLE_TEMPLATE_URL`, y la región ya existente). El front arma el enlace con la consola regional (`https://<region>.console.aws.amazon.com/cloudformation/home?region=<region>#/stacks/quickcreate`) y, si la URL viene vacía, muestra un aviso en lugar del botón.
+- **Coste/riesgo:** un bucket con un único objeto de pocos KB; la exposición pública se limita a una plantilla ya publicada en el repositorio. `force_destroy` permite destruirlo con `terraform destroy`.
+- **Verificación:** `terraform fmt` y `validate` correctos; no se ejecutó `apply`. Tests de API y del portal correctos.
+
+## D-36 · Redespliegue manual
+
+- **Fecha:** 2026-11-08.
+- **Contexto:** el webhook de GitHub no llega en local y, si el primer despliegue falla (p. ej. `UnknownHostException` al arrancar Step Functions), no había forma de reintentarlo sin hacer un commit nuevo.
+- **Decisión:** `POST /api/apps/{id}/releases` (propietario o administrador) lanza el último commit de la rama con `GithubGateway.branchHead` y `ReleaseLauncher.launch`, la misma lógica que el primer despliegue (`AppService.launchHead`). Responde `201` con el `Release` creado. Errores: `404` si la app no es visible, `409` si falta la conexión con AWS o con GitHub, `400` si la rama no tiene commits y `409` si el último commit ya tiene un release en curso o correcto.
+- **Idempotencia:** es la de `ReleaseLauncher` (por commit). Un commit con release `FAILED` se puede relanzar; con `PENDING`, `RUNNING` o `SUCCEEDED`, no. Si el despliegue no llega a arrancar, el release se devuelve igualmente (`201`) en estado `FAILED` con su `errorMessage`, y se puede reintentar.
+- **Sin `force`:** no se implementa un parámetro para forzar un commit ya desplegado con éxito: rompería la idempotencia compartida con el webhook. Para desplegar otra vez basta un commit nuevo.
+- **Portal:** botón "Redesplegar" en el detalle de la app (deshabilitado mientras se envía, con el error de la API y refresco del historial). El modo demo lo simula con `MockBackend.redeploy`.
+- **Verificación:** `AppServiceRedeployTest` (8 casos) y `app-detail.page.spec.ts` (2 casos nuevos).
+
+## D-37 · Despliegue entre cuentas AWS: credenciales de plataforma y `assume_role` en el provider
+
+- **Fecha:** 2026-11-09.
+- **Contexto:** el deploy exportaba en `pre_build` las credenciales asumidas del cliente para todo el build. `terraform init` usaba entonces esas credenciales contra el backend S3 del bucket de estado (cuenta de la plataforma) y fallaba con 403 en `HeadObject` cuando el cliente está en otra cuenta (plataforma `053214907144`, cliente `082335234303`).
+- **Decisión:**
+  - El entorno del build conserva **siempre las credenciales de la plataforma** (rol `releasy-codebuild`): backend S3 de Terraform, lectura y escritura de artefactos en el bucket de estado y escritura final en DynamoDB.
+  - Terraform asume el rol del cliente **solo en los providers `aws`** con un bloque `assume_role` (`role_arn = var.tenant_role_arn`, `external_id = var.external_id`, `session_name = "releasy-terraform"`), incluido el alias `us_east_1`. Es un `dynamic "assume_role"` que solo se activa si `tenant_role_arn != ""`, así `validate` y los usos locales siguen funcionando. Los módulos heredan los providers de la plantilla, por lo que no cambian.
+  - Variables nuevas en las tres plantillas: `tenant_role_arn` y `external_id` (`sensitive`). El buildspec las pasa con `TF_VAR_tenant_role_arn` y `TF_VAR_external_id` (entorno, no `-var`) para que no queden en el log.
+  - Los comandos de CLI sobre recursos del cliente (`s3 sync` del front, `cloudfront create-invalidation`, login y push al ECR del build) asumen el rol en un **subshell**; las credenciales asumidas no salen de él.
+  - `pre_build` de ambos buildspec solo comprueba que el rol es asumible (falla pronto) y descarta la salida.
+- **Multi-cuenta:** funciona con cuentas distintas y también si plataforma y cliente son la misma cuenta.
+- **IAM:** sin cambios. `iam.tf` ya permite `sts:AssumeRole` sobre `arn:aws:iam::*:role/ReleEasyDeployRole`; la confianza del rol del cliente (`releasy-deploy-role.yaml`) exige `sts:ExternalId`. No hace falta `sts:TagSession` porque el provider no pasa tags de sesión.
+- **Pendiente (orden ECR):** `buildspec-build.yml` empuja la imagen al ECR del cliente antes de que Terraform cree el repositorio (módulo `backend`), así que el primer push de las plantillas con backend puede fallar. No se corrige aquí; hay que crear el repo antes (p. ej. un paso previo de Terraform) o mover el push tras el apply.
+- **Verificación:** `terraform fmt -recursive`, `init -backend=false` y `validate` por plantilla; YAML de los buildspec parseable; `bash -n` de los scripts embebidos. No se ejecutó `apply`.
+
+## D-38 · Permisos completos del rol de despliegue: lecturas por servicio y escrituras acotadas
+
+- **Fecha:** 2026-11-10.
+- **Contexto:** con el `assume_role` de D-37 funcionando, el `apply` de `angular-static` falló por permisos que la política no enumeraba (`s3:GetBucketAcl`, antes `cloudfront:GetOriginAccessControl` y `SNS:GetTopicAttributes`). El provider `hashicorp/aws` 5.x lee en cada creación y refresh muchos atributos de cada recurso (en S3: ACL, CORS, website, logging, lifecycle, replication, accelerate, request payment, object lock, tags...), así que enumerar lecturas una a una no escala.
+- **Decisión:**
+  - **Lecturas completas por servicio:** `s3:Get*`/`s3:List*` (solo `releasy-*`), `cloudfront:Get*`/`List*`/`Describe*`, `ec2:Describe*`/`Get*`, `autoscaling:Describe*`, `elasticloadbalancing:Describe*`, `logs:`/`cloudwatch:`/`sns:`/`rum:`/`xray:` `Describe*`/`List*`/`Get*` e `iam:Get*`/`List*` (solo roles e instance profiles `releasy-*`).
+  - **Escrituras acotadas:** crear, actualizar, etiquetar y borrar (para `terraform destroy`) solo lo que crean las plantillas. Recurso acotado por prefijo donde el servicio lo admite: S3 `releasy-*`, IAM `role/` e `instance-profile/releasy-*`, ECR `repository/releasy-*`, SNS `releasy-*`, alarmas `alarm:releasy-*` y logs `log-group:/releasy/*`. CloudFront, EC2, Auto Scaling, ELB, RUM y X-Ray quedan en `"*"` (no admiten o no conviene el nivel de recurso). Se quitan `logs:*`, `cloudwatch:*`, `sns:*`, `autoscaling:*`, `elasticloadbalancing:*` y `ecr:*` sobre `"*"`.
+  - **Añadidos:** `iam:CreateServiceLinkedRole` limitado por `iam:AWSServiceName` (Auto Scaling, ELB, RUM, API Gateway), lectura de políticas gestionadas de AWS (`arn:aws:iam::aws:policy/*`, para el adjunto de `AmazonSSMManagedInstanceCore`) y `ec2:*NetworkInterface*` para el VPC Link de API Gateway.
+  - Sin `*:*` ni `iam:*`. WAF, Route 53, ACM y API Gateway (opcionales) no cambian.
+- **Tamaño:** IAM limita a 10 240 caracteres (sin espacios) la suma de políticas inline de un rol. Medido sobre el JSON minificado de los `PolicyDocument`: ~5 200 caracteres en total, así que se mantienen inline (sin `AWS::IAM::ManagedPolicy`).
+- **Verificación:** YAML parseado con un loader que soporta `!Ref`/`!Sub`/`!GetAtt`; parámetros `PlatformAccountId`, `ExternalId`, `RoleName` y salida `RoleArn` sin cambios. No se creó ni actualizó ningún stack.
+- **Nota:** los clientes con el rol ya creado deben actualizar el stack con la plantilla nueva.
+
+## D-39 · Resultados de la primera prueba real y limitaciones conocidas
+
+- **Fecha:** 2026-11-10.
+- **Contexto:** hasta D-38 todo el código de la Fase 4 se había validado solo de forma estática. Esta es la primera prueba contra AWS real.
+- **Entorno:** una cuenta AWS de prueba (al final, plataforma y cliente en la misma cuenta), región `us-east-1`, sin free tier. Durante la prueba hubo un rol del cliente en otra cuenta (terminada en `4303`) y la plataforma en la `7144`; ese escenario multi-cuenta permitió detectar el fallo de D-37.
+  - **Plataforma** (`backend/deploy/platform`, Terraform con estado local por la dependencia circular con el bucket de estado): 15 recursos (roles IAM de CodeBuild y Step Functions, bucket S3 de estado, 4 tablas DynamoDB bajo demanda, proyectos `releasy-build` y `releasy-deploy`, y la máquina de estados), más el bucket público de solo lectura con la plantilla del rol (D-35). El `apply` se hizo en dos pasadas por un corte DNS intermitente del entorno local.
+  - **Conexión BYOA:** el cliente crea el stack de CloudFormation de `ReleEasyDeployRole` (External ID generado por el backend), pega el ARN en el portal y el backend lo valida con `sts:AssumeRole`.
+  - **Backend** en modo real (`RELEASY_AWS_MODE=real`, DynamoDB y Step Functions reales), GitHub App real y portal Angular. Repositorio de prueba público (app Angular 21 mínima en `frontend/`, build en `frontend/dist/releasy-demo/browser`) y plantilla `angular-static` (S3 privado + CloudFront con OAC, HTTPS, reescritura 403/404 a `index.html`, alarma 5xx + SNS).
+- **Resultado:** el release llegó a `SUCCEEDED` y la URL de CloudFront abre la aplicación de demo.
+- **Probado de extremo a extremo:** solo `angular-static`. Las plantillas `springboot-api` y `angular-springboot` **solo se han validado con `terraform validate`**; no se han desplegado.
+- **Problemas encontrados y resueltos:**
+  - El proyecto `releasy-deploy` es `NO_SOURCE` y no tenía las plantillas: se clona el repo público y el dist del build llega al deploy por el bucket de estado (D-34).
+  - No existía "Redesplegar": si el primer release fallaba no había reintento. Se añade `POST /api/apps/{id}/releases` y el botón del portal (D-36).
+  - Multi-cuenta: Terraform usaba las credenciales asumidas del cliente para el backend S3 del estado y fallaba con 403. Credenciales de plataforma para estado y artefactos, y `assume_role` en el provider `aws` de las plantillas (D-37).
+  - El rol del cliente carecía de lecturas `Get*`/`List*`/`Describe*` que usa el provider (p. ej. `s3:GetBucketAcl`): políticas ampliadas (D-38).
+  - El release no pasaba a `FAILED` si fallaba la fase de build: corregido antes de la prueba (commit `6681534`).
+  - Cortes DNS intermitentes del entorno local afectaron a Terraform y al backend. No es un defecto del producto.
+- **Limitaciones conocidas (deuda técnica):**
+  1. Las opciones del catálogo (`enable_waf`, `enable_rum`, `notification_email`, etc.) **no llegan a Terraform**: `buildspec-deploy.yml` solo pasa `app_name`, `tenant_slug`, `region` y `container_image`. WAF, RUM y la suscripción de email no se crean aunque se marquen en el portal.
+  2. El módulo `frontend` solo crea la alarma 5xx, aunque la opción se llama 4xx/5xx.
+  3. El módulo no expone el ID del monitor RUM ni inyecta el snippet en la aplicación.
+  4. El build empuja la imagen a ECR (`releasy-<tenant>-<app>`) antes de que Terraform cree el repositorio (afecta a las plantillas con backend; ver D-37).
+  5. El token de instalación de la GitHub App caduca en 1 hora (solo afecta a repos privados; la prueba usó un repo público).
+  6. El estado de `platform/` es local.
+  7. Las plantillas se clonan de la rama `develop` del repo público (acoplamiento a GitHub; alternativa: empaquetarlas en S3).
+  8. El dist no se firma ni se verifica.
+  9. El release pasa a `FAILED` sin mensaje detallado (solo "revisa los logs de CodeBuild").
+- **Coste:** plataforma parada, cercano a cero (DynamoDB bajo demanda, CodeBuild y Step Functions por uso). `angular-static`: céntimos (CloudFront incluye 1 TB gratuito). WAF tendría un cargo mensual fijo. El NAT Gateway (~1 USD/día) pesa en `springboot-api` y `angular-springboot`. Coste real de la prueba: [completar tras revisar Cost Explorer].
+- **Runbooks:** pasos de despliegue y desmontaje en `backend/deploy/README.md`.
+
+## D-40 · Revisión de la Fase 4 y registro en el capítulo 4 del TFM
+
+- **Fecha:** 2026-11-10.
+- **Contexto:** tras descargar el trabajo de la rama `develop` (D-27 a D-39), se revisaron el código de la Fase 4 y los `.env` de la prueba real, y se reescribió el capítulo 4 de `TFM.docx` con lo implementado.
+- **Limitaciones nuevas** (se suman a las de D-39; en el TFM están numeradas como L-01 a L-13, Tabla 17):
+  1. **`angular-springboot`, CloudFront hacia el ALB:** el origen `/api/*` del módulo `frontend` usa `origin_protocol_policy = "https-only"`, pero el ALB del módulo `backend` solo tiene un listener HTTP en el puerto 80. Las peticiones a `/api/*` no llegarían al backend. Solución: `http-only` hacia el ALB con una cabecera secreta que el ALB compruebe, o un listener HTTPS con certificado de ACM.
+  2. **En modo real no se pasa por `RUNNING` ni se actualiza la URL de la app.** El pipeline escribe directamente `SUCCEEDED`/`FAILED` en `releasy-releases`; en modo mock ambas cosas las hace `ReleaseService` (`markRunning` y `markSucceeded`, que copia la URL a la app). `APPS_TABLE` se pasa al deploy, pero no se usa. El portal sigue mostrando la URL provisional `*.apps.releasy.local`.
+  3. **Releases huérfanos en `PENDING`:** si Step Functions falla antes de arrancar CodeBuild, el estado `Failed` del ASL no escribe nada en DynamoDB.
+  4. **Sin bloqueo del estado:** `buildspec-deploy.yml` no pasa `use_lockfile=true` al backend S3; dos releases simultáneos de la misma app podrían pisarse.
+  5. **Región:** las apps se despliegan en la región de la plataforma (`AWS_REGION` de CodeBuild) y el estimador usa precios de `eu-west-1`.
+  6. **Variables de entorno en el user-data** de las instancias: visibles en la plantilla de lanzamiento; no sirven para secretos.
+  7. **Etiquetas del catálogo:** se anuncian alarmas 4xx/5xx (front) y de memoria (backend), pero solo se crean las de 5xx, CPU y latencia.
+  8. El catálogo no pide `acm_certificate_arn`, que el dominio propio necesita.
+- **Configuración corregida:** `.env.example` traía `RELEASY_ROLE_TEMPLATE_URL`, que la API no lee (la propiedad `releasy.aws.role-template-url` se enlaza con `RELEASY_AWS_ROLE_TEMPLATE_URL`). Con el nombre incorrecto, el portal desactiva el botón *Quick-create*. Se deja solo el nombre correcto. También se eliminó la D-35 duplicada en este registro.
+- **TFM:** el capítulo 4 describe la plantilla del rol, los cuatro módulos de Terraform, la plataforma, el pipeline (credenciales por operación, Tabla 15), la prueba real y las limitaciones. Los capítulos 1 a 3 no se tocaron. Siguen diciendo que hay CI con GitHub Actions y que el portal se hace en el Sprint 3, y el 4.1.5 ya explica la diferencia.
+- **Verificación:** `./mvnw test` → 70 pruebas en verde; `ng test` → 55 en verde. `terraform validate` no se pudo repetir en esta sesión por falta de espacio en disco (el provider ocupa unos 700 MB); vale la validación de D-29 a D-37.

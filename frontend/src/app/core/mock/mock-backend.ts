@@ -279,6 +279,22 @@ export class MockBackend {
     this.save();
   }
 
+  /** Redespliegue manual: lanza un release nuevo salvo que ya haya uno en curso (409, como la API). */
+  redeploy(token: string | null, appId: string): Release {
+    const app = this.accessibleApp(token, appId);
+    const now = Date.now();
+    if (this.state.releases.some((r) => r.data.appId === app.id && r.finishedAt > now)) {
+      throw new MockApiError(
+        409,
+        `El último commit de la rama ${app.branch} ya tiene un release en curso o desplegado correctamente. Haz un commit nuevo para desplegar otra vez.`,
+      );
+    }
+    this.addPush(app.id, now);
+    this.save();
+    const created = this.state.releases[this.state.releases.length - 1];
+    return releaseView(created, now);
+  }
+
   /** Vuelve a los datos de ejemplo iniciales. */
   reset(): void {
     this.state = seedState();
@@ -414,6 +430,8 @@ function newTenant(name: string, email: string, createdAt = Date.now()): MockTen
       status: 'NOT_CONNECTED',
       externalId: `rle-${randomHex(24)}`,
       platformAccountId: PLATFORM_ACCOUNT_ID,
+      region: 'us-east-1',
+      roleTemplateUrl: 'https://releasy-public-053214907144.s3.us-east-1.amazonaws.com/cloudformation/releasy-deploy-role.yaml',
       roleArn: null,
       accountId: null,
       connectedAt: null,

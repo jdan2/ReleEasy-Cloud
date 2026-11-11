@@ -73,6 +73,7 @@ public record ReleasyProperties(
             @NotBlank String region,
             @NotBlank @Pattern(regexp = "\\d{12}") String platformAccountId,
             String stateMachineArn,
+            String roleTemplateUrl,
             @Valid @NotNull Dynamodb dynamodb,
             @Valid @NotNull Mock mock) {
     }

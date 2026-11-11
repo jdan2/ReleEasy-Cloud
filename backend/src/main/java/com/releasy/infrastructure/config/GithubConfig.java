@@ -2,9 +2,9 @@ package com.releasy.infrastructure.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.releasy.application.port.GithubGateway;
-import com.releasy.infrastructure.github.GithubAppClient;
-import com.releasy.infrastructure.github.GithubAppKeys;
-import com.releasy.infrastructure.mock.MockGithubGateway;
+import com.releasy.infrastructure.adapters.github.GithubAppClient;
+import com.releasy.infrastructure.adapters.github.GithubAppKeys;
+import com.releasy.infrastructure.adapters.mock.MockGithubGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

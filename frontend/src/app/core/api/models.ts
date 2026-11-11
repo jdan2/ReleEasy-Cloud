@@ -49,6 +49,10 @@ export interface AwsConnection {
   externalId: string;
   /** Cuenta AWS de la plataforma, en la que debe confiar el rol. */
   platformAccountId: string;
+  /** Región AWS de la plataforma; la consola de CloudFormation del Quick-create se abre en ella. */
+  region: string;
+  /** URL pública de la plantilla del rol; vacía si aún no está publicada. */
+  roleTemplateUrl: string;
   roleArn: string | null;
   accountId: string | null;
   connectedAt: string | null;

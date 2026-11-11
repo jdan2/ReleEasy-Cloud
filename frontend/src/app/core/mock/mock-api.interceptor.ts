@@ -47,6 +47,7 @@ const ROUTES: readonly [string, RegExp, Handler][] = [
 
   ['GET', /^\/api\/apps\/([^/]+)$/, (b, t, _body, [id]) => b.getApp(t, id)],
   ['GET', /^\/api\/apps\/([^/]+)\/releases$/, (b, t, _body, [id]) => b.listReleases(t, id)],
+  ['POST', /^\/api\/apps\/([^/]+)\/releases$/, (b, t, _body, [id]) => b.redeploy(t, id)],
 ];
 
 function route(backend: MockBackend, request: HttpRequest<unknown>, path: string): unknown {

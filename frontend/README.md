@@ -50,7 +50,7 @@ src/app/
     auth/        login y registro
     portal/      vista del cliente: inicio, conexión AWS y GitHub, catálogo, alta de app
     admin/       vista del administrador: clientes y sus apps
-    apps/        detalle de aplicación (común) con releases y polling
+    apps/        detalle de aplicación (común) con releases, polling y botón Redesplegar (D-36)
 src/styles.css   Tailwind y clases de componente (.card, .btn-primary, ...)
 src/testing/     datos de prueba compartidos por los specs
 ```

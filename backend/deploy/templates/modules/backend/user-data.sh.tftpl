@@ -1,0 +1,33 @@
+#!/bin/bash
+# user-data de las instancias del Auto Scaling Group: instala Docker, se autentica
+# contra ECR y arranca el contenedor del backend. Un contenedor por instancia (D-23).
+set -euo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+%{ if enable_xray ~}
+# Daemon de X-Ray como contenedor auxiliar.
+docker run -d --restart always --name xray-daemon \
+  -p 2000:2000/udp \
+  amazon/aws-xray-daemon -o
+%{ endif ~}
+
+%{ if container_image != "" ~}
+# Autenticacion contra ECR y arranque del backend.
+aws ecr get-login-password --region ${aws_region} \
+  | docker login --username AWS --password-stdin "$(echo "${container_image}" | cut -d/ -f1)"
+
+docker run -d --restart always --name app \
+  -p ${container_port}:${container_port} \
+%{ if log_group != "" ~}
+  --log-driver=awslogs \
+  --log-opt awslogs-region=${aws_region} \
+  --log-opt awslogs-group=${log_group} \
+%{ endif ~}
+  ${env_flags} \
+  ${container_image}
+%{ else ~}
+# Sin imagen configurada (caso de validacion): no se arranca ningun contenedor.
+echo "Sin container_image; la instancia queda lista pero sin aplicacion."
+%{ endif ~}

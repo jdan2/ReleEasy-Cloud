@@ -73,6 +73,46 @@ describe('AppDetailPage', () => {
     respond([aRelease('SUCCEEDED')]);
   });
 
+  function redeployButton(): HTMLButtonElement {
+    const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'));
+    return buttons.find((b) => /Redesplegar|Redesplegando/.test(b.textContent ?? '')) as HTMLButtonElement;
+  }
+
+  it('Redesplegar lanza el despliegue, se deshabilita mientras tanto y refresca los releases', () => {
+    respond([aRelease('FAILED', { id: 'r-1' })]);
+    expect(redeployButton().disabled).toBe(false);
+
+    redeployButton().click();
+    fixture.detectChanges();
+    const request = backend.expectOne({ method: 'POST', url: `${appUrl}/releases` });
+    expect(redeployButton().disabled).toBe(true);
+    expect(redeployButton().textContent).toContain('Redesplegando');
+
+    request.flush(aRelease('PENDING', { id: 'r-2' }));
+    fixture.detectChanges();
+    expect(redeployButton().disabled).toBe(false);
+    expect(text()).toContain('Despliegue lanzado');
+    respond([aRelease('PENDING', { id: 'r-2' }), aRelease('FAILED', { id: 'r-1' })]);
+    expect(text()).toContain('PENDING');
+  });
+
+  it('Redesplegar muestra el error de la API y reactiva el botón sin refrescar', () => {
+    respond([aRelease('SUCCEEDED')]);
+
+    redeployButton().click();
+    backend
+      .expectOne({ method: 'POST', url: `${appUrl}/releases` })
+      .flush(
+        { status: 409, detail: 'El último commit ya tiene un release en curso o desplegado correctamente.' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    fixture.detectChanges();
+
+    expect(text()).toContain('ya tiene un release en curso');
+    expect(redeployButton().disabled).toBe(false);
+    backend.expectNone(appUrl);
+  });
+
   it('indica que la URL es provisional hasta el primer despliegue correcto', () => {
     respond([], 'https://tienda-acme.apps.releasy.local');
 

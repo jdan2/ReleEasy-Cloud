@@ -1,0 +1,335 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  ReleEasy Cloud - Rol de despliegue en la cuenta del cliente (D-18).
+  Crea el rol ReleEasyDeployRole, que confia en la cuenta de la plataforma ReleEasy
+  y solo puede asumirse presentando el External ID del cliente. La plataforma asume
+  este rol (sts:AssumeRole) para desplegar la infraestructura de las aplicaciones del
+  cliente con Terraform. El cliente crea este rol una sola vez, mediante el enlace
+  Quick-create que le ofrece el portal; no necesita instalar ni ejecutar nada.
+
+# -----------------------------------------------------------------------------
+# Parametros
+#
+# El portal rellena estos dos valores en el enlace Quick-create, de modo que el
+# cliente solo tiene que revisar y pulsar "Crear stack" en su propia consola de AWS.
+# -----------------------------------------------------------------------------
+Parameters:
+  PlatformAccountId:
+    Type: String
+    Description: >-
+      ID (12 digitos) de la cuenta AWS de la plataforma ReleEasy. Es la unica cuenta
+      autorizada a asumir este rol.
+    AllowedPattern: "^[0-9]{12}$"
+    ConstraintDescription: Debe ser un ID de cuenta AWS de 12 digitos.
+
+  ExternalId:
+    Type: String
+    Description: >-
+      Identificador secreto generado por ReleEasy para este cliente. La plataforma
+      debe presentarlo al asumir el rol; sin el, el AssumeRole se rechaza. Evita el
+      problema del "confused deputy".
+    MinLength: 8
+    MaxLength: 128
+    NoEcho: true
+
+  RoleName:
+    Type: String
+    Description: Nombre del rol. No es necesario cambiarlo.
+    Default: ReleEasyDeployRole
+
+# -----------------------------------------------------------------------------
+# Recursos
+# -----------------------------------------------------------------------------
+Resources:
+  ReleEasyDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: >-
+        Rol que asume la plataforma ReleEasy para desplegar la infraestructura de las
+        aplicaciones del cliente. Creado por CloudFormation (bootstrap BYOA).
+      MaxSessionDuration: 3600
+      # Politica de confianza: solo la cuenta de la plataforma, y solo si presenta
+      # el External ID correcto.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${PlatformAccountId}:root"
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref ExternalId
+      # Permisos de despliegue, acotados a los servicios que usan las plantillas de
+      # ReleEasy (angular-static, springboot-api y angular-springboot). Se separan en
+      # politicas por area para que sean legibles y auditables.
+      Policies:
+        # --- Front estatico: S3 privado + CloudFront con OAC ---
+        - PolicyName: ReleEasy-Frontend
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Lecturas completas: el provider hashicorp/aws lee ACL, CORS, website,
+              # logging, lifecycle, replication, accelerate, etc. en cada create/refresh.
+              - Sid: S3Read
+                Effect: Allow
+                Action:
+                  - "s3:Get*"
+                  - "s3:List*"
+                Resource:
+                  - "arn:aws:s3:::releasy-*"
+                  - "arn:aws:s3:::releasy-*/*"
+              - Sid: S3Write
+                Effect: Allow
+                Action:
+                  - "s3:CreateBucket"
+                  - "s3:DeleteBucket"
+                  - "s3:PutBucketPolicy"
+                  - "s3:DeleteBucketPolicy"
+                  - "s3:PutBucketPublicAccessBlock"
+                  - "s3:PutEncryptionConfiguration"
+                  - "s3:PutBucketVersioning"
+                  - "s3:PutBucketTagging"
+                  - "s3:PutBucketOwnershipControls"
+                  - "s3:DeleteBucketOwnershipControls"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                  - "s3:DeleteObjectVersion"
+                  - "s3:AbortMultipartUpload"
+                Resource:
+                  - "arn:aws:s3:::releasy-*"
+                  - "arn:aws:s3:::releasy-*/*"
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - "cloudfront:Get*"
+                  - "cloudfront:List*"
+                  - "cloudfront:Describe*"
+                  - "cloudfront:CreateDistribution"
+                  - "cloudfront:CreateDistributionWithTags"
+                  - "cloudfront:UpdateDistribution"
+                  - "cloudfront:DeleteDistribution"
+                  - "cloudfront:CreateOriginAccessControl"
+                  - "cloudfront:UpdateOriginAccessControl"
+                  - "cloudfront:DeleteOriginAccessControl"
+                  - "cloudfront:TagResource"
+                  - "cloudfront:UntagResource"
+                  - "cloudfront:CreateInvalidation"
+                Resource: "*"
+
+        # --- Backend: VPC, EC2 Auto Scaling, ALB, ECR ---
+        - PolicyName: ReleEasy-Backend
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Networking
+                Effect: Allow
+                Action:
+                  - "ec2:Describe*"
+                  - "ec2:Get*"
+                  - "ec2:*Vpc*"
+                  - "ec2:*Subnet*"
+                  - "ec2:*RouteTable*"
+                  - "ec2:CreateRoute"
+                  - "ec2:DeleteRoute"
+                  - "ec2:ReplaceRoute"
+                  - "ec2:*InternetGateway*"
+                  - "ec2:*NatGateway*"
+                  - "ec2:*Address*"
+                  - "ec2:*SecurityGroup*"
+                  - "ec2:*NetworkInterface*"
+                  - "ec2:*Tags*"
+                Resource: "*"
+              - Sid: ComputeAutoscaling
+                Effect: Allow
+                Action:
+                  - "ec2:RunInstances"
+                  - "ec2:TerminateInstances"
+                  - "ec2:*LaunchTemplate*"
+                  - "autoscaling:Describe*"
+                  - "autoscaling:Get*"
+                  - "autoscaling:Create*"
+                  - "autoscaling:Update*"
+                  - "autoscaling:Delete*"
+                  - "autoscaling:Put*"
+                  - "autoscaling:Set*"
+                  - "autoscaling:EnableMetricsCollection"
+                  - "autoscaling:DisableMetricsCollection"
+                  - "autoscaling:TerminateInstanceInAutoScalingGroup"
+                  - "elasticloadbalancing:Describe*"
+                  - "elasticloadbalancing:Create*"
+                  - "elasticloadbalancing:Modify*"
+                  - "elasticloadbalancing:Delete*"
+                  - "elasticloadbalancing:Set*"
+                  - "elasticloadbalancing:AddTags"
+                  - "elasticloadbalancing:RemoveTags"
+                  - "elasticloadbalancing:RegisterTargets"
+                  - "elasticloadbalancing:DeregisterTargets"
+                Resource: "*"
+              - Sid: EcrRepos
+                Effect: Allow
+                Action:
+                  - "ecr:*"
+                Resource: !Sub "arn:aws:ecr:*:${AWS::AccountId}:repository/releasy-*"
+              - Sid: EcrAuth
+                Effect: Allow
+                Action:
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:DescribeRepositories"
+                Resource: "*"
+
+        # --- Observabilidad: CloudWatch Logs, alarmas, metricas, SNS, RUM, X-Ray ---
+        - PolicyName: ReleEasy-Observability
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Lecturas (Describe/List/Get) en "*": varias no admiten permisos a nivel de recurso.
+              - Sid: MonitoringRead
+                Effect: Allow
+                Action:
+                  - "logs:Describe*"
+                  - "logs:List*"
+                  - "logs:Get*"
+                  - "cloudwatch:Describe*"
+                  - "cloudwatch:List*"
+                  - "cloudwatch:Get*"
+                  - "sns:Get*"
+                  - "sns:List*"
+                  - "rum:Get*"
+                  - "rum:List*"
+                  - "xray:Get*"
+                  - "xray:List*"
+                Resource: "*"
+              - Sid: LogGroups
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:DeleteLogGroup"
+                  - "logs:PutRetentionPolicy"
+                  - "logs:DeleteRetentionPolicy"
+                  - "logs:TagResource"
+                  - "logs:UntagResource"
+                  - "logs:TagLogGroup"
+                  - "logs:UntagLogGroup"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:log-group:/releasy/*"
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:log-group:/releasy/*:*"
+              - Sid: Alarms
+                Effect: Allow
+                Action:
+                  - "cloudwatch:PutMetricAlarm"
+                  - "cloudwatch:DeleteAlarms"
+                  - "cloudwatch:EnableAlarmActions"
+                  - "cloudwatch:DisableAlarmActions"
+                  - "cloudwatch:TagResource"
+                  - "cloudwatch:UntagResource"
+                Resource: !Sub "arn:aws:cloudwatch:*:${AWS::AccountId}:alarm:releasy-*"
+              - Sid: Sns
+                Effect: Allow
+                Action:
+                  - "sns:CreateTopic"
+                  - "sns:DeleteTopic"
+                  - "sns:SetTopicAttributes"
+                  - "sns:TagResource"
+                  - "sns:UntagResource"
+                  - "sns:Subscribe"
+                  - "sns:Unsubscribe"
+                  - "sns:SetSubscriptionAttributes"
+                Resource: !Sub "arn:aws:sns:*:${AWS::AccountId}:releasy-*"
+              - Sid: RumXray
+                Effect: Allow
+                Action:
+                  - "rum:CreateAppMonitor"
+                  - "rum:UpdateAppMonitor"
+                  - "rum:DeleteAppMonitor"
+                  - "rum:PutRumEvents"
+                  - "rum:TagResource"
+                  - "rum:UntagResource"
+                  - "xray:PutTraceSegments"
+                  - "xray:PutTelemetryRecords"
+                  - "xray:CreateGroup"
+                  - "xray:UpdateGroup"
+                  - "xray:DeleteGroup"
+                  - "xray:TagResource"
+                  - "xray:UntagResource"
+                Resource: "*"
+
+        # --- Opcionales: WAF, dominio propio (Route 53 + ACM), API Gateway ---
+        - PolicyName: ReleEasy-Optional
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WafDomainApiGateway
+                Effect: Allow
+                Action:
+                  - "wafv2:*"
+                  - "route53:*"
+                  - "acm:*"
+                  - "apigateway:*"
+                Resource: "*"
+
+        # --- IAM: crear los roles de instancia y perfiles que necesitan las apps ---
+        # Acotado por prefijo de nombre (releasy-*) para no poder crear roles arbitrarios.
+        - PolicyName: ReleEasy-Iam
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AppRoles
+                Effect: Allow
+                Action:
+                  - "iam:CreateRole"
+                  - "iam:DeleteRole"
+                  - "iam:Get*"
+                  - "iam:List*"
+                  - "iam:PassRole"
+                  - "iam:UpdateRole"
+                  - "iam:UpdateAssumeRolePolicy"
+                  - "iam:AttachRolePolicy"
+                  - "iam:DetachRolePolicy"
+                  - "iam:PutRolePolicy"
+                  - "iam:DeleteRolePolicy"
+                  - "iam:TagRole"
+                  - "iam:UntagRole"
+                  - "iam:CreateInstanceProfile"
+                  - "iam:DeleteInstanceProfile"
+                  - "iam:TagInstanceProfile"
+                  - "iam:UntagInstanceProfile"
+                  - "iam:AddRoleToInstanceProfile"
+                  - "iam:RemoveRoleFromInstanceProfile"
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/releasy-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/releasy-*"
+              # Lectura de politicas gestionadas de AWS (p. ej. AmazonSSMManagedInstanceCore).
+              - Sid: ManagedPolicyRead
+                Effect: Allow
+                Action:
+                  - "iam:GetPolicy"
+                  - "iam:GetPolicyVersion"
+                  - "iam:ListPolicyVersions"
+                Resource: "arn:aws:iam::aws:policy/*"
+              # Roles vinculados a servicio que AWS crea la primera vez (ASG, ALB, WAF...).
+              - Sid: ServiceLinkedRoles
+                Effect: Allow
+                Action:
+                  - "iam:CreateServiceLinkedRole"
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*"
+                Condition:
+                  StringLike:
+                    "iam:AWSServiceName":
+                      - "autoscaling.amazonaws.com"
+                      - "elasticloadbalancing.amazonaws.com"
+                      - "rum.amazonaws.com"
+                      - "ops.apigateway.amazonaws.com"
+
+# -----------------------------------------------------------------------------
+# Salida
+#
+# El cliente copia este ARN y lo pega en el portal de ReleEasy. La plataforma
+# comprueba entonces que puede asumir el rol con el External ID (AwsConnectionService).
+# -----------------------------------------------------------------------------
+Outputs:
+  RoleArn:
+    Description: ARN del rol. Pegalo en el portal de ReleEasy para completar la conexion.
+    Value: !GetAtt ReleEasyDeployRole.Arn

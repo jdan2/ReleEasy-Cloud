@@ -107,4 +107,9 @@ export class ReleasyApi {
   listReleases(appId: string): Observable<Release[]> {
     return this.http.get<Release[]>(`${this.baseUrl}/apps/${encodeURIComponent(appId)}/releases`);
   }
+
+  /** Redespliega a mano el último commit de la rama (`POST /api/apps/{id}/releases`). */
+  redeploy(appId: string): Observable<Release> {
+    return this.http.post<Release>(`${this.baseUrl}/apps/${encodeURIComponent(appId)}/releases`, {});
+  }
 }

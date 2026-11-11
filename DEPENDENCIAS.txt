@@ -125,14 +125,37 @@ spring-security-test | 6.5.11 | BACKEND (test) | pom.xml | 2026-10-17 | Pruebas 
  5. INFRAESTRUCTURA COMO CODIGO (/backend/deploy)
 --------------------------------------------------------------------------------
 
-(Se completara en la fase 4.)
+Registrado a posteriori (2026-11-10) a partir del codigo de la rama develop (D-28 a D-39).
+
+hashicorp/aws (provider de Terraform) | ~> 5.0 (validado con 5.100.0) | TERRAFORM | required_providers en platform/ y templates/*/versions.tf; terraform init lo descarga | 2026-10-26 | Unico provider. Las plantillas usan dos instancias (region de la app y alias us_east_1) con assume_role dinamico (D-37). Ocupa ~700 MB por carpeta .terraform.
+Terraform (en el pipeline) | 1.11.2 | PIPELINE | buildspec-deploy.yml lo descarga de releases.hashicorp.com en cada build | 2026-10-30 | Distinto del Terraform local (1.16.6); ambos cumplen >= 1.10.
+AWS CloudFormation (plantilla bootstrap/releasy-deploy-role.yaml) | - | TERRAFORM | Lo crea el cliente con el enlace Quick-create; la plataforma lo publica en S3 (D-35) | 2026-10-26 | Solo para el rol ReleEasyDeployRole (D-28). Validado con aws cloudformation validate-template.
+Imagen de CodeBuild aws/codebuild/amazonlinux-x86_64-standard:5.0 | 5.0 | PIPELINE | platform/codebuild.tf (imagen gestionada de AWS) | 2026-10-26 | Runtimes nodejs 22 y java corretto21 (buildspec-build.yml); releasy-build en modo privilegiado para Docker.
+eclipse-temurin:21-jre (Docker Hub) | 21-jre | PIPELINE | FROM del Dockerfile que genera buildspec-build.yml si el repo del cliente no trae uno | 2026-10-30 | Imagen base del backend del cliente.
+Amazon Linux 2023 (AMI) | ultima disponible | TERRAFORM | data "aws_ami" en templates/modules/backend | 2026-10-26 | Instancias del Auto Scaling Group; el user-data instala Docker con dnf.
+amazon/aws-xray-daemon (Docker Hub) | latest | TERRAFORM | docker run en el user-data si enable_xray | 2026-10-26 | Contenedor auxiliar de X-Ray (opcional).
 
 
 --------------------------------------------------------------------------------
  6. SERVICIOS DE AWS UTILIZADOS
 --------------------------------------------------------------------------------
 
-(Se completara en la fase 4.)
+Cuenta de la plataforma (backend/deploy/platform, desplegada el 2026-11-07/10 en una cuenta de pruebas, us-east-1; D-39):
+Amazon S3 | - | AWS | platform/storage.tf y public-templates.tf | 2026-10-26 | Bucket de estado releasy-state-<cuenta> (versionado, SSE-KMS aws/s3, privado; estado de las apps y artifacts/) y bucket publico releasy-public-<cuenta> (solo cloudformation/*).
+Amazon DynamoDB | - | AWS | platform/storage.tf | 2026-10-26 | Tablas releasy-users, -tenants, -apps (GSI tenantId-index y repository-index) y -releases; PAY_PER_REQUEST y PITR.
+AWS CodeBuild | - | AWS | platform/codebuild.tf | 2026-10-26 | Proyectos releasy-build y releasy-deploy (NO_SOURCE, BUILD_GENERAL1_SMALL).
+AWS Step Functions | - | AWS | platform/stepfunctions.tf | 2026-10-26 | Maquina releasy-deploy (Build -> Deploy, integracion .sync).
+AWS IAM y AWS STS | - | AWS | platform/iam.tf; la API usa sts:AssumeRole | 2026-10-26 | Roles releasy-codebuild y releasy-stepfunctions.
+AWS Secrets Manager | - | AWS | Variable github_token_secret_arn (opcional) | 2026-10-26 | Previsto para el token de la GitHub App; aun sin usar (D-39, D-40).
+
+Cuenta del cliente (backend/deploy/templates, segun la plantilla):
+Amazon S3 + Amazon CloudFront (OAC) | - | AWS | modules/frontend | 2026-10-26 | Front estatico; desplegado en real con angular-static (D-39).
+AWS WAF, AWS Certificate Manager | - | AWS | modules/frontend (opcionales) | 2026-10-26 | WAF con AWSManagedRulesCommonRuleSet en us-east-1; dominio propio con certificado de ACM.
+Amazon VPC (subredes, IGW, NAT Gateway) | - | AWS | modules/network | 2026-10-26 | Una NAT compartida por defecto (~1 USD/dia).
+Amazon EC2 Auto Scaling + Elastic Load Balancing (ALB) + Amazon ECR | - | AWS | modules/backend | 2026-10-26 | Un contenedor por instancia; instance refresh con rollback.
+Amazon API Gateway (HTTP API) | - | AWS | modules/backend (opcional) | 2026-10-26 | Con VPC Link y throttling.
+Amazon CloudWatch (Logs, alarmas), Amazon SNS, CloudWatch RUM, AWS X-Ray | - | AWS | modules/observability y modules/frontend | 2026-10-26 | Observabilidad opcional de las plantillas.
+AWS Systems Manager | - | AWS | Politica AmazonSSMManagedInstanceCore del rol de instancia | 2026-10-26 | Acceso de administracion a las instancias sin SSH.
 
 
 --------------------------------------------------------------------------------
@@ -167,3 +190,4 @@ TFM.docx y PLANTILLA.docx | - | DOCUMENTACION | Anadidos por el usuario en la ra
 2026-10-19 | D-25: GitHub App real (JDK HttpClient + Nimbus, ya presentes) y script npm export:catalog con el esbuild que trae @angular/build. Sin dependencias nuevas.
 2026-10-19 | D-26: autorizacion OAuth del usuario al conectar GitHub. Sin dependencias nuevas.
 2026-10-24 | GitHub App real "releeasy-cloud-dev" creada y probada (RELEASY_GITHUB_MODE=real). Nueva seccion 7: servicios externos y documentacion (TFM.docx, PLANTILLA.docx y validacion con un venv temporal de Python con defusedxml y lxml). Sin dependencias nuevas en el codigo.
+2026-11-10 | Secciones 5 y 6 completadas con la IaC y los servicios de AWS de la Fase 4 (rama develop, D-28 a D-39), registrados a posteriori. Capitulo 4 del TFM reescrito (validado con el mismo venv temporal de Python: defusedxml y lxml). Sin dependencias nuevas en el codigo.
